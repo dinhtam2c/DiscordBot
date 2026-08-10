@@ -2,6 +2,7 @@
 using Application.Discord.Interactions;
 using Application.Discord.Interactions.Context;
 using Application.Discord.Interactions.Handler;
+using Application.Discord.Interactions.Response;
 using Microsoft.Extensions.Logging;
 using Modules.Music.Application.Repositories;
 
@@ -24,5 +25,7 @@ internal sealed class LeaveHandler(
         player.Leave();
         await playerRepository.RemoveAsync(guildId, ct);
         await unitOfWork.CommitAsync(ct);
+
+        await context.Responder.RespondAsync(InteractionResponse.Text("Left."), ct);
     }
 }
