@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/docker/">
+    <File Path=".dockerignore" />
+    <File Path="Dockerfile" />
+  </Folder>
+  <Folder Name="/scripts/">
+    <File Path="scripts/deploy.ps1" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Application/Application.csproj" Id="83faee16-1c8f-465d-8bdf-eafac853a376" />
+    <Project Path="src/Bot/Bot.csproj" Id="1892e2d2-e6e0-4057-815d-06a6a40152d1" />
+    <Project Path="src/Domain/Domain.csproj" />
+    <Project Path="src/Infrastructure/Infrastructure.csproj" Id="cd2b7ef4-9613-48e8-a56d-207b14cb853a" />
+    <Project Path="src/Modules.Music/Modules.Music.csproj" Id="7b33e6d9-c9bf-4acc-9932-d32cad106b6f" />
+    <Project Path="src/Modules.Utility/Modules.Utility.csproj" Id="0406a1fe-f363-4c9f-b709-8fbc5364b2e6" />
+  </Folder>
+</Solution>

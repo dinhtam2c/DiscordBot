@@ -1,0 +1,6 @@
+.vs
+
+**/obj/
+**/bin/
+/deploy.ps1
+/scripts/deploy.ps1
