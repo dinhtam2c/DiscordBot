@@ -12,9 +12,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
 
     private readonly Task _playbackTask;
 
-    // 200 ms PCM @ 48 kHz, stereo, s16le
-    // 3840 bytes = 20 ms
-    private const int BufferSize = 3840 * 10;
+    private const int BufferSize = 81920;
 
     public Task Completion => _playbackTask;
 
@@ -25,20 +23,20 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
     public NativePlaybackInstance(
         IAudioSource source,
         Track track,
-        IAudioTranscoder encoder,
+        IAudioTranscoder transcoder,
         IVoiceSession voiceSession,
         CancellationToken externalToken)
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
-        _playbackTask = RunAsync(source, track, encoder, voiceSession);
+        _playbackTask = RunAsync(source, track, transcoder, voiceSession);
     }
 
-    private async Task RunAsync(IAudioSource source, Track track, IAudioTranscoder encoder, IVoiceSession voiceSession)
+    private async Task RunAsync(IAudioSource source, Track track, IAudioTranscoder transcoder, IVoiceSession voiceSession)
     {
         var ct = _cts.Token;
 
         await using var sourceStream = await source.OpenAsync(track, ct);
-        await using var pcmStream = await encoder.OpenPcmStreamAsync(sourceStream, ct);
+        await using var pcmStream = await transcoder.OpenPcmStreamAsync(sourceStream, ct);
 
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
 

@@ -9,6 +9,8 @@ public interface IVoiceSession
     ChannelId VoiceChannelId { get; }
 
     Task WritePcmAsync(ReadOnlyMemory<byte> data, CancellationToken ct);
-    
+
+    Task WriteOpusAsync(ReadOnlyMemory<byte> data, CancellationToken ct);
+
     Task FlushAsync(CancellationToken ct);
 }

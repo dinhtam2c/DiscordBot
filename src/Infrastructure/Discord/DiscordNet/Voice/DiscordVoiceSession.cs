@@ -13,29 +13,51 @@ internal sealed class DiscordVoiceSession(
 
     public ChannelId VoiceChannelId => voiceChannelId;
 
-    private AudioOutStream? _stream;
+    private AudioOutStream? _pcmStream;
+
+    private AudioOutStream? _opusStream;
 
     public async Task WritePcmAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
-        var stream = GetOrCreateStream();
+        var stream = GetOrCreatePcmStream();
+
+        await stream.WriteAsync(data, ct);
+    }
+
+    public async Task WriteOpusAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
+    {
+        var stream = GetOrCreateOpusStream();
 
         await stream.WriteAsync(data, ct);
     }
 
     public async Task FlushAsync(CancellationToken ct)
     {
-        if (_stream is not null)
-            await _stream.FlushAsync(ct);
+        if (_pcmStream is not null)
+            await _pcmStream.FlushAsync(ct);
+
+        if (_opusStream is not null)
+            await _opusStream.FlushAsync(ct);
     }
 
-    private AudioOutStream GetOrCreateStream()
+    private AudioOutStream GetOrCreatePcmStream()
     {
-        return _stream ??= audioClient.CreatePCMStream(AudioApplication.Music, bufferMillis: 3000);
+        return _pcmStream ??= audioClient.CreatePCMStream(
+            AudioApplication.Music,
+            bitrate: 128000,
+            bufferMillis: 1000,
+            packetLoss: 5);
+    }
+
+    private AudioOutStream GetOrCreateOpusStream()
+    {
+        return _opusStream ??= audioClient.CreateOpusStream(bufferMillis: 3000);
     }
 
     public void Dispose()
     {
-        _stream?.Dispose();
+        _pcmStream?.Dispose();
+        _opusStream?.Dispose();
         audioClient.Dispose();
     }
 }

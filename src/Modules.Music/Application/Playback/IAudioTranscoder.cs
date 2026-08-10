@@ -3,4 +3,6 @@
 internal interface IAudioTranscoder
 {
     Task<Stream> OpenPcmStreamAsync(Stream source, CancellationToken ct);
+
+    Task<Stream> OpenOpusStreamAsync(Stream source, CancellationToken ct);
 }

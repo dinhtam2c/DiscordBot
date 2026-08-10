@@ -11,6 +11,16 @@ internal class FfmpegAudioTranscoder(
 {
     public Task<Stream> OpenPcmStreamAsync(Stream source, CancellationToken ct)
     {
+        return OpenStreamAsync(source, ConfigurePcmOutput, ct);
+    }
+
+    public Task<Stream> OpenOpusStreamAsync(Stream source, CancellationToken ct)
+    {
+        return OpenStreamAsync(source, ConfigureOpusOutput, ct);
+    }
+
+    private Task<Stream> OpenStreamAsync(Stream source, Action<ProcessStartInfo> configureOutput, CancellationToken ct)
+    {
         var psi = new ProcessStartInfo
         {
             FileName = options.Value.FfmpegPath,
@@ -27,18 +37,12 @@ internal class FfmpegAudioTranscoder(
         psi.ArgumentList.Add("-i");
         psi.ArgumentList.Add("pipe:0");
 
-        psi.ArgumentList.Add("-f");
-        psi.ArgumentList.Add("s16le");
-
-        psi.ArgumentList.Add("-ar");
-        psi.ArgumentList.Add("48000");
-
-        psi.ArgumentList.Add("-ac");
-        psi.ArgumentList.Add("2");
+        configureOutput(psi);
 
         psi.ArgumentList.Add("pipe:1");
 
-        var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start ffmpeg.");
+        var process = Process.Start(psi)
+            ?? throw new InvalidOperationException("Failed to start ffmpeg.");
 
         try
         {
@@ -47,22 +51,51 @@ internal class FfmpegAudioTranscoder(
             var stderrTask = DrainStderrAsync(process);
             var inputPump = PumpAsync(source, process, ct);
 
-            return Task.FromResult<Stream>(new FfmpegPcmStream(process, inputPump, stderrTask));
+            Stream stream = new FfmpegStream(process, inputPump, stderrTask);
+
+            return Task.FromResult(stream);
         }
         catch
         {
-            try
-            {
-                if (!process.HasExited)
-                    process.Kill(true);
-            }
-            catch
-            {
-            }
-
+            TryKill(process);
             process.Dispose();
             throw;
         }
+    }
+
+    private static void ConfigurePcmOutput(ProcessStartInfo psi)
+    {
+        psi.ArgumentList.Add("-f");
+        psi.ArgumentList.Add("s16le");
+
+        psi.ArgumentList.Add("-ar");
+        psi.ArgumentList.Add("48000");
+
+        psi.ArgumentList.Add("-ac");
+        psi.ArgumentList.Add("2");
+    }
+
+    private static void ConfigureOpusOutput(ProcessStartInfo psi)
+    {
+        psi.ArgumentList.Add("-vn");
+
+        psi.ArgumentList.Add("-c:a");
+        psi.ArgumentList.Add("libopus");
+
+        psi.ArgumentList.Add("-application");
+        psi.ArgumentList.Add("audio");
+
+        psi.ArgumentList.Add("-ar");
+        psi.ArgumentList.Add("48000");
+
+        psi.ArgumentList.Add("-ac");
+        psi.ArgumentList.Add("2");
+
+        psi.ArgumentList.Add("-b:a");
+        psi.ArgumentList.Add("128k");
+
+        psi.ArgumentList.Add("-f");
+        psi.ArgumentList.Add("opus");
     }
 
     private async Task PumpAsync(Stream source, Process process, CancellationToken ct)
@@ -112,6 +145,19 @@ internal class FfmpegAudioTranscoder(
         {
             logger.LogTrace(ex, "Error while draining ffmpeg stderr.");
             throw;
+        }
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(true);
+        }
+        catch
+        {
+            // Ignore cleanup failure.
         }
     }
 }

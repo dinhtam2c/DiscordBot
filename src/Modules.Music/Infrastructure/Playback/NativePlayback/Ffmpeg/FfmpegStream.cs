@@ -2,7 +2,7 @@
 
 namespace Modules.Music.Infrastructure.Playback.NativePlayback.Ffmpeg;
 
-internal sealed class FfmpegPcmStream(
+internal sealed class FfmpegStream(
     Process process,
     Task inputPump,
     Task stderrTask) : Stream
