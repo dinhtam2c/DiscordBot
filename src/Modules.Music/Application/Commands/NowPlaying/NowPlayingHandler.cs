@@ -4,6 +4,7 @@ using Application.Discord.Interactions.Handler;
 using Application.Discord.Interactions.Response;
 using Application.Discord.User;
 using Modules.Music.Application.Repositories;
+using Modules.Music.Domain.Players;
 using System.Globalization;
 
 namespace Modules.Music.Application.Commands.NowPlaying;
@@ -43,7 +44,7 @@ internal sealed class NowPlayingHandler(
                         Fields =
                         [
                             new("Artist", currentTrack.Track.Artist, true),
-                            new("Duration", currentTrack.Track.Duration.ToString(@"mm\:ss"), true),
+                            new("Duration", currentTrack.Track.Duration.TotalHours >= 1 ? currentTrack.Track.Duration.ToString(@"hh\:mm\:ss") : currentTrack.Track.Duration.ToString(@"mm\:ss"), true),
                             new("Requested by", requesterName, true),
                             new("Requested at", currentTrack.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true),
                         ]

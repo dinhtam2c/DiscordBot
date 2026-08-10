@@ -75,7 +75,7 @@ internal class PlayHandler(
                             Fields =
                             [
                                 new("Artist", track.Artist, true),
-                                new("Duration", track.Duration.ToString(@"mm\:ss"), true),
+                                new("Duration", track.Duration.TotalHours >= 1 ? track.Duration.ToString(@"hh\:mm\:ss") : track.Duration.ToString(@"mm\:ss"), true),
                                 new("Position", player.Queue.Count == 0 ? "Now Playing" : $"#{player.Queue.Count}", true),
                             ]
                         }
