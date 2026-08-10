@@ -2,11 +2,13 @@
 # 1. Build .NET application
 # =========================
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS dotnet-build
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-noble AS dotnet-build
+
+ARG TARGETARCH
 
 WORKDIR /src
 
-COPY DiscordBot.slnx                            .
+COPY DiscordBot.slnx .
 COPY src/Bot/Bot.csproj                         src/Bot/
 COPY src/Application/Application.csproj         src/Application/
 COPY src/Domain/Domain.csproj                   src/Domain/
@@ -14,14 +16,26 @@ COPY src/Infrastructure/Infrastructure.csproj   src/Infrastructure/
 COPY src/Modules.Music/Modules.Music.csproj     src/Modules.Music/
 COPY src/Modules.Utility/Modules.Utility.csproj src/Modules.Utility/
 
-RUN dotnet restore
+RUN case "${TARGETARCH}" in \
+    amd64) RID="linux-x64" ;; \
+    arm64) RID="linux-arm64" ;; \
+    *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    dotnet restore src/Bot/Bot.csproj --runtime "$RID"
 
 COPY . .
 
-RUN dotnet publish src/Bot/Bot.csproj \
-    -c Release \
-    -o /app/publish \
-    --no-restore
+RUN case "${TARGETARCH}" in \
+    amd64) RID="linux-x64" ;; \
+    arm64) RID="linux-arm64" ;; \
+    *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    dotnet publish src/Bot/Bot.csproj \
+        -c Release \
+        -r "$RID" \
+        --self-contained false \
+        -o /app/publish \
+        --no-restore
 
 
 # =========================
