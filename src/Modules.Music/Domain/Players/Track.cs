@@ -1,6 +1,6 @@
 ﻿namespace Modules.Music.Domain.Players;
 
-public record Track(
+internal sealed record Track(
     string Id,
     string Title,
     string Description,

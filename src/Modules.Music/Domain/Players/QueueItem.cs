@@ -2,7 +2,7 @@
 
 namespace Modules.Music.Domain.Players;
 
-public record QueueItem(
+internal sealed record QueueItem(
     Track Track,
     UserId RequesterId,
     DateTimeOffset RequestedAt);

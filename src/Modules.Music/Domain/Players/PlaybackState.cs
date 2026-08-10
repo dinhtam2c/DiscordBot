@@ -1,6 +1,6 @@
 ﻿namespace Modules.Music.Domain.Players;
 
-public enum PlaybackState
+internal enum PlaybackState
 {
     Idle,
     Playing,

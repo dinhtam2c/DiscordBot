@@ -1,6 +1,6 @@
 ﻿namespace Modules.Music.Domain.Players;
 
-public enum TrackSource
+internal enum TrackSource
 {
     Youtube,
     Spotify,

@@ -1,6 +1,6 @@
 ﻿namespace Modules.Music.Domain.Players;
 
-public sealed record Volume
+internal sealed record Volume
 {
     public int Value { get; init; }
 

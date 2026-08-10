@@ -2,7 +2,7 @@
 
 namespace Modules.Music.Domain.Players;
 
-public class PlaybackQueue
+internal sealed class PlaybackQueue
 {
     private readonly List<QueueItem> _items = [];
 

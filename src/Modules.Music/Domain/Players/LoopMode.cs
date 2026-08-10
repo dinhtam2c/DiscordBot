@@ -1,6 +1,6 @@
 ﻿namespace Modules.Music.Domain.Players;
 
-public enum LoopMode
+internal enum LoopMode
 {
     None,
     Track,
