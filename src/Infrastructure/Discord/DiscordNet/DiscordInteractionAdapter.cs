@@ -1,13 +1,17 @@
-﻿using Application.Discord.Interactions.Context;
+﻿using Application.Abstractions;
+using Application.Discord.Interactions.Context;
 using Application.Discord.Interactions.Dispatcher;
 using Discord.WebSocket;
 using Domain.ValueObjects;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Infrastructure.Discord.DiscordNet;
 
 internal sealed class DiscordInteractionAdapter(
     DiscordSocketClient client,
-    InteractionDispatcher dispatcher) : IDiscordEventSubscriber
+    IServiceScopeFactory scopeFactory,
+    IAppLifetime appLifetime) : IDiscordEventSubscriber
 {
     public void Subscribe()
     {
@@ -28,7 +32,21 @@ internal sealed class DiscordInteractionAdapter(
             options,
             responder);
 
-        _ = dispatcher.DispatchAsync(context, CancellationToken.None);
+        _ = RunDetachedAsync(context);
+    }
+
+    private async Task RunDetachedAsync(InteractionContext context)
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var dispatcher = scope.ServiceProvider.GetRequiredService<InteractionDispatcher>();
+            await dispatcher.DispatchAsync(context, appLifetime.Stopping);
+        }
+        catch
+        {
+            // Dispatcher should normally handle command exceptions itself.
+        }
     }
 
     private static object MapOption(object value)

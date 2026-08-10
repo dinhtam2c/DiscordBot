@@ -1,5 +1,4 @@
 ﻿using Application.Discord.Voice;
-using Microsoft.Extensions.Logging;
 using Modules.Music.Application.AudioSource;
 using Modules.Music.Application.Playback;
 using Modules.Music.Domain.Players;
@@ -7,15 +6,15 @@ using System.Buffers;
 
 namespace Modules.Music.Infrastructure.Playback.NativePlayback;
 
-internal sealed class NativePlaybackInstance : IPlaybackInstance
+internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposable
 {
-    private readonly CancellationTokenSource _cts = new();
+    private readonly CancellationTokenSource _cts;
 
     private readonly Task _playbackTask;
 
     // 200 ms PCM @ 48 kHz, stereo, s16le
     // 3840 bytes = 20 ms
-    private const int BufferSize = 3840;
+    private const int BufferSize = 3840 * 10;
 
     public Task Completion => _playbackTask;
 
@@ -23,8 +22,14 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
 
     public bool IsPaused => false;
 
-    public NativePlaybackInstance(IAudioSource source, Track track, IAudioTranscoder encoder, IVoiceSession voiceSession)
+    public NativePlaybackInstance(
+        IAudioSource source,
+        Track track,
+        IAudioTranscoder encoder,
+        IVoiceSession voiceSession,
+        CancellationToken externalToken)
     {
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
         _playbackTask = RunAsync(source, track, encoder, voiceSession);
     }
 
@@ -33,7 +38,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
         var ct = _cts.Token;
 
         await using var sourceStream = await source.OpenAsync(track, ct);
-        await using var pcmStream = await encoder.TranscodePcmAsync(sourceStream, ct);
+        await using var pcmStream = await encoder.OpenPcmStreamAsync(sourceStream, ct);
 
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
 
@@ -77,7 +82,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
         throw new NotImplementedException();
     }
 
-    public async Task StopAsync(CancellationToken ct)
+    private async Task StopAsync()
     {
         _cts.Cancel();
 
@@ -92,7 +97,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
 
     public async ValueTask DisposeAsync()
     {
-        await StopAsync(CancellationToken.None);
+        await StopAsync();
         _cts.Dispose();
     }
 }

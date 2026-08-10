@@ -15,7 +15,7 @@ public static class DependencyInjection
         services.AddEventModule();
 
         services.AddSingleton<InteractionHandlerResolver>();
-        services.AddSingleton<InteractionDispatcher>();
+        services.AddScoped<InteractionDispatcher>();
 
         return services;
     }

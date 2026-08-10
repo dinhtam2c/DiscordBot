@@ -8,6 +8,6 @@ internal sealed class TrackSkippedHandler(PlaybackController playbackController)
 {
     public async Task HandleAsync(TrackSkippedEvent @event, CancellationToken ct)
     {
-        await playbackController.StopCurrentAsync(@event.guildId, ct);
+        await playbackController.StopCurrentAsync(@event.guildId);
     }
 }

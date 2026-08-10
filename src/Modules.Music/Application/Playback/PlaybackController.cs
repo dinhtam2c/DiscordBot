@@ -1,5 +1,7 @@
-﻿using Application.Discord.Voice;
+﻿using Application.Abstractions;
+using Application.Discord.Voice;
 using Domain.ValueObjects;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Modules.Music.Domain.Players;
 using System.Collections.Concurrent;
@@ -8,144 +10,40 @@ namespace Modules.Music.Application.Playback;
 
 internal sealed class PlaybackController(
     IPlaybackFactory playbackFactory,
+    IAppLifetime appLifetime,
+    IServiceProvider serviceProvider,
     ILogger<PlaybackController> logger)
 {
-    private readonly ConcurrentDictionary<GuildId, PlaybackRuntime> _runtimes = [];
+    private readonly ConcurrentDictionary<GuildId, PlaybackSession> _sessions = [];
 
-    public Task StartAsync(Player player, IVoiceSession voiceSession, CancellationToken ct)
+    public async Task StartAsync(Player player, IVoiceSession voiceSession)
     {
-        var runtime = _runtimes.GetOrAdd(player.GuildId, _ => new PlaybackRuntime(voiceSession));
+        var lg = serviceProvider.GetRequiredService<ILogger<PlaybackSession>>();
+        var session = new PlaybackSession(playbackFactory, voiceSession, appLifetime.Stopping, player, lg);
 
-        lock (runtime)
+        if (!_sessions.TryAdd(player.GuildId, session))
         {
-            if (runtime.LoopTask is not null && !runtime.LoopTask.IsCompleted)
-            {
-                return Task.CompletedTask;
-            }
-
-            runtime.LoopTask = RunLoopAsync(player, runtime, ct);
+            await session.DisposeAsync();
+            throw new InvalidOperationException($"A playback session is already running for guild {player.GuildId}.");
         }
 
-        return Task.CompletedTask;
+        logger.LogInformation("Starting playback session for guild {GuildId}.", player.GuildId);
+        session.Start();
     }
 
-    public async Task StopCurrentAsync(GuildId guildId, CancellationToken ct)
+    public async Task StopCurrentAsync(GuildId guildId)
     {
-        if (!_runtimes.TryGetValue(guildId, out var runtime))
+        if (!_sessions.TryGetValue(guildId, out var session))
             return;
 
-        await runtime.StopPlaybackAsync();
+        await session.StopCurrentPlaybackAsync();
     }
 
-    public async Task StopAsync(GuildId guildId, CancellationToken ct)
+    public async Task StopAsync(GuildId guildId)
     {
-        if (!_runtimes.TryRemove(guildId, out var runtime))
+        if (!_sessions.TryRemove(guildId, out var session))
             return;
 
-        runtime.Cancellation.Cancel();
-
-        await runtime.StopPlaybackAsync();
-
-        if (runtime.LoopTask is not null)
-        {
-            try
-            {
-                await runtime.LoopTask;
-            }
-            catch (OperationCanceledException)
-            {
-            }
-        }
-
-        runtime.Cancellation.Dispose();
-    }
-
-    private async Task RunLoopAsync(Player player, PlaybackRuntime runtime, CancellationToken externalCt)
-    {
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(runtime.Cancellation.Token, externalCt);
-
-        var ct = linkedCts.Token;
-
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                if (!player.HasCurrentTrack)
-                {
-                    logger.LogInformation("Queue finished for guild {GuildId}.", player.GuildId);
-                    break;
-                }
-
-                var track = player.CurrentTrack!;
-
-                try
-                {
-                    logger.LogInformation("Starting playback for guild {GuildId}, Track: {TrackTitle}", player.GuildId, track.Title);
-
-                    var playback = await playbackFactory.StartAsync(track, runtime.VoiceSession, ct);
-                    runtime.AttachPlayback(playback);
-
-                    await playback.Completion;
-
-                    logger.LogInformation("Track finished for guild {GuildId}, Track: {TrackTitle}", player.GuildId, track.Title);
-
-                    player.FinishCurrentTrack();
-                }
-                catch (OperationCanceledException)
-                {
-                    logger.LogInformation("Playback cancelled for guild {GuildId}.", player.GuildId);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Error occurred while playing track for guild {GuildId}.", player.GuildId);
-                    player.FinishCurrentTrack();
-                }
-                finally
-                {
-                    await runtime.StopPlaybackAsync();
-                }
-            }
-        }
-        finally
-        {
-            runtime.LoopTask = null;
-        }
-    }
-
-    private sealed class PlaybackRuntime(IVoiceSession voiceSession)
-    {
-        private readonly object _sync = new();
-
-        public IVoiceSession VoiceSession { get; } = voiceSession;
-
-        public CancellationTokenSource Cancellation { get; } = new();
-
-        public Task? LoopTask { get; set; }
-
-        private IPlaybackInstance? _playback;
-
-        public void AttachPlayback(IPlaybackInstance playback)
-        {
-            lock (_sync)
-            {
-                _playback = playback;
-            }
-        }
-
-        public async Task StopPlaybackAsync()
-        {
-            IPlaybackInstance? playback;
-
-            lock (_sync)
-            {
-                playback = _playback;
-                _playback = null;
-            }
-
-            if (playback is null)
-                return;
-
-            await playback.DisposeAsync();
-        }
+        await session.DisposeAsync();
     }
 }

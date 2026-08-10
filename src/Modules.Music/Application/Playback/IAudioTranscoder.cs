@@ -2,5 +2,5 @@
 
 internal interface IAudioTranscoder
 {
-    Task<Stream> TranscodePcmAsync(Stream source, CancellationToken ct);
+    Task<Stream> OpenPcmStreamAsync(Stream source, CancellationToken ct);
 }

@@ -9,7 +9,7 @@ internal class FfmpegAudioTranscoder(
     IOptions<FfmpegOptions> options,
     ILogger<FfmpegAudioTranscoder> logger) : IAudioTranscoder
 {
-    public Task<Stream> TranscodePcmAsync(Stream source, CancellationToken ct)
+    public Task<Stream> OpenPcmStreamAsync(Stream source, CancellationToken ct)
     {
         var psi = new ProcessStartInfo
         {
@@ -40,25 +40,33 @@ internal class FfmpegAudioTranscoder(
 
         var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start ffmpeg.");
 
-        logger.LogDebug("Started ffmpeg process with PID {Pid}", process.Id);
-
-        _ = process.StandardError.ReadToEndAsync().ContinueWith(t =>
+        try
         {
-            if (!string.IsNullOrWhiteSpace(t.Result))
+            logger.LogDebug("Started ffmpeg process with PID {Pid}", process.Id);
+
+            var stderrTask = DrainStderrAsync(process);
+            var inputPump = PumpAsync(source, process, ct);
+
+            return Task.FromResult<Stream>(new FfmpegPcmStream(process, inputPump, stderrTask));
+        }
+        catch
+        {
+            try
             {
-                logger.LogWarning("ffmpeg error output: {ErrorOutput}", t.Result);
+                if (!process.HasExited)
+                    process.Kill(true);
             }
-        }, ct);
+            catch
+            {
+            }
 
-        var inputPump = PumpAsync(source, process, ct);
-
-        return Task.FromResult<Stream>(new FfmpegPcmStream(process, inputPump));
+            process.Dispose();
+            throw;
+        }
     }
 
     private async Task PumpAsync(Stream source, Process process, CancellationToken ct)
     {
-        long total = 0;
-
         try
         {
             logger.LogTrace("Pumping data to ffmpeg process with PID {Pid}", process.Id);
@@ -71,16 +79,12 @@ internal class FfmpegAudioTranscoder(
         }
         catch (OperationCanceledException)
         {
-            logger.LogTrace(
-                "ffmpeg input pump cancelled. Total={Total}",
-                total);
+            logger.LogTrace("ffmpeg input pump cancelled.");
+            throw;
         }
         catch (Exception ex)
         {
-            logger.LogTrace(
-                ex,
-                "Error while pumping data to ffmpeg. Total={Total}",
-                total);
+            logger.LogTrace(ex, "Error while pumping data to ffmpeg.");
 
             try
             {
@@ -90,6 +94,23 @@ internal class FfmpegAudioTranscoder(
             {
             }
 
+            throw;
+        }
+    }
+
+    private async Task DrainStderrAsync(Process process)
+    {
+        try
+        {
+            var stderr = await process.StandardError.ReadToEndAsync();
+            if (!string.IsNullOrWhiteSpace(stderr))
+            {
+                logger.LogWarning("ffmpeg error output: {ErrorOutput}", stderr);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogTrace(ex, "Error while draining ffmpeg stderr.");
             throw;
         }
     }

@@ -1,37 +1,145 @@
 ﻿using Application.Discord.Voice;
-using Domain.ValueObjects;
+using Microsoft.Extensions.Logging;
+using Modules.Music.Application.Playback;
+using Modules.Music.Domain.Players;
 
-namespace Modules.Music.Application.Playback;
-
-internal sealed class PlaybackSession(GuildId guildId, IVoiceSession session) : IAsyncDisposable
+internal sealed class PlaybackSession(
+    IPlaybackFactory playbackFactory,
+    IVoiceSession voiceSession,
+    CancellationToken externalToken,
+    Player player,
+    ILogger<PlaybackSession> logger) : IAsyncDisposable
 {
-    public GuildId GuildId { get; } = guildId;
+    private readonly Lock _sync = new();
 
-    public IVoiceSession VoiceSession { get; } = session;
+    private IPlaybackInstance? _playback;
 
-    public IPlaybackInstance? Playback { get; private set; }
+    private Task? _loopTask;
+    private readonly CancellationTokenSource _cancellation = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
 
-    public bool IsPlaying => Playback?.IsPlaying == true;
+    private bool _started = false;
+    private bool _stopping = false;
+    private bool _disposed = false;
 
-    public bool IsPaused { get; private set; }
-
-    public void AttachPlayback(IPlaybackInstance playback)
+    public void Start()
     {
-        Playback = playback;
+        lock (_sync)
+        {
+            if (_started)
+                throw new InvalidOperationException("Playback session has already been started.");
+
+            if (_stopping || _disposed)
+                throw new ObjectDisposedException(nameof(PlaybackSession));
+
+            _started = true;
+            _loopTask = RunLoopAsync();
+        }
     }
 
-    public async Task StopPlaybackAsync()
+    private async Task RunLoopAsync()
     {
-        if (Playback is null)
-            return;
+        var ct = _cancellation.Token;
 
-        await Playback.DisposeAsync();
+        while (!ct.IsCancellationRequested)
+        {
+            if (!player.HasCurrentTrack)
+            {
+                logger.LogInformation("Queue finished for guild {GuildId}.", player.GuildId);
+                break;
+            }
 
-        Playback = null;
+            var track = player.CurrentTrack!;
+
+            try
+            {
+                logger.LogInformation("Starting playback for guild {GuildId}, Track: {TrackTitle}", player.GuildId, track.Title);
+
+                var playback = playbackFactory.Start(track, voiceSession, ct);
+                if (!TryAttachPlayback(playback))
+                {
+                    await playback.DisposeAsync();
+                    break;
+                }
+
+                await playback.Completion;
+
+                logger.LogInformation("Track finished for guild {GuildId}, Track: {TrackTitle}", player.GuildId, track.Title);
+
+                player.FinishCurrentTrack();
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // Playback-level cancellation, e.g. skip.
+                logger.LogInformation("Playback cancelled for guild {GuildId}, Track: {TrackTitle}", player.GuildId, track.Title);
+            }
+            catch (OperationCanceledException)
+            {
+                logger.LogDebug("Playback session cancelled for guild {GuildId}.", player.GuildId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error occurred while playing track for guild {GuildId}.", player.GuildId);
+                player.FinishCurrentTrack();
+            }
+            finally
+            {
+                await StopCurrentPlaybackAsync();
+            }
+        }
+    }
+
+    private bool TryAttachPlayback(IPlaybackInstance playback)
+    {
+        lock (_sync)
+        {
+            if (!_started || _stopping || _disposed)
+                return false;
+
+            _playback = playback;
+            return true;
+        }
+    }
+
+    public async Task StopCurrentPlaybackAsync()
+    {
+        IPlaybackInstance? playback;
+
+        lock (_sync)
+        {
+            playback = _playback;
+            _playback = null;
+        }
+
+        if (playback is not null)
+            await playback.DisposeAsync();
     }
 
     public async ValueTask DisposeAsync()
     {
-        await StopPlaybackAsync();
+        lock (_sync)
+        {
+            if (_disposed)
+                return;
+
+            _stopping = true;
+            _disposed = true;
+        }
+
+        _cancellation.Cancel();
+
+        await StopCurrentPlaybackAsync();
+
+        if (_loopTask is not null)
+        {
+            try
+            {
+                await _loopTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        _cancellation.Dispose();
     }
 }

@@ -17,6 +17,4 @@ internal interface IPlaybackInstance : IAsyncDisposable
     Task SeekAsync(TimeSpan position, CancellationToken ct);
 
     Task SetVolumeAsync(Volume volume, CancellationToken ct);
-
-    Task StopAsync(CancellationToken ct);
 }

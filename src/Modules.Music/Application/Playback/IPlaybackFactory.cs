@@ -5,5 +5,5 @@ namespace Modules.Music.Application.Playback;
 
 internal interface IPlaybackFactory
 {
-    Task<IPlaybackInstance> StartAsync(Track track, IVoiceSession voiceSession, CancellationToken ct);
+    IPlaybackInstance Start(Track track, IVoiceSession voiceSession, CancellationToken ct);
 }

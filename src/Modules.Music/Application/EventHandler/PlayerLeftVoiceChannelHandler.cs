@@ -11,7 +11,7 @@ internal sealed class PlayerLeftVoiceChannelHandler(
 {
     public async Task HandleAsync(PlayerLeftVoiceChannelEvent @event, CancellationToken ct)
     {
-        await playbackController.StopAsync(@event.guildId, ct);
+        await playbackController.StopAsync(@event.guildId);
         await voiceSessionManager.LeaveAsync(@event.guildId, ct);
     }
 }

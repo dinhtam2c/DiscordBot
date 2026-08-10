@@ -39,16 +39,44 @@ internal class YoutubeAudioSource(
         var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start yt-dlp.");
 
-        logger.LogDebug("Started yt-dlp process with ID: {processId}", process.Id);
-
-        _ = process.StandardError.ReadToEndAsync(ct).ContinueWith(t =>
+        try
         {
-            if (!string.IsNullOrWhiteSpace(t.Result))
-            {
-                logger.LogWarning("yt-dlp error output: {errorOutput}", t.Result);
-            }
-        }, ct);
+            logger.LogDebug("Started yt-dlp process with ID: {processId}", process.Id);
 
-        return Task.FromResult<Stream>(new YtDlpStream(process));
+            var stderrTask = DrainStderrAsync(process);
+
+            return Task.FromResult<Stream>(new YtDlpStream(process, stderrTask));
+        }
+        catch
+        {
+            try
+            {
+                if (!process.HasExited)
+                    process.Kill(true);
+            }
+            catch
+            {
+            }
+
+            process.Dispose();
+            throw;
+        }
+    }
+
+    private async Task DrainStderrAsync(Process process)
+    {
+        try
+        {
+            var stderr = await process.StandardError.ReadToEndAsync();
+            if (!string.IsNullOrWhiteSpace(stderr))
+            {
+                logger.LogWarning("yt-dlp error output: {errorOutput}", stderr);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogTrace(ex, "Error while draining yt-dlp stderr.");
+            throw;
+        }
     }
 }

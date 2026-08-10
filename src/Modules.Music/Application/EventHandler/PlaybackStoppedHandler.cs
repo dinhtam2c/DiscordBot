@@ -8,6 +8,6 @@ internal sealed class PlaybackStoppedHandler(PlaybackController playbackControll
 {
     public async Task HandleAsync(PlaybackStoppedEvent @event, CancellationToken ct)
     {
-        await playbackController.StopAsync(@event.guildId, ct);
+        await playbackController.StopAsync(@event.guildId);
     }
 }

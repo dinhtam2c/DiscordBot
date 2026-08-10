@@ -17,6 +17,6 @@ internal sealed class PlaybackStartedHandler(
             throw new InvalidOperationException("Voice session not found for the specified guild.");
         }
 
-        await playbackController.StartAsync(@event.Player, voiceSession, ct);
+        await playbackController.StartAsync(@event.Player, voiceSession);
     }
 }

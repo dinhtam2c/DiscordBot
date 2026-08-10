@@ -9,7 +9,7 @@ namespace Application.Discord.Interactions.Dispatcher;
 
 public sealed class InteractionDispatcher(
     InteractionHandlerResolver resolver,
-    IServiceScopeFactory scopeFactory,
+    IServiceProvider serviceProvider,
     ILogger<InteractionDispatcher> logger)
 {
     public async Task DispatchAsync(InteractionContext context, CancellationToken ct)
@@ -26,15 +26,20 @@ public sealed class InteractionDispatcher(
                 ct);
             return;
         }
-
-        using var scope = scopeFactory.CreateScope();
-        var handler = (IInteractionHandler)scope.ServiceProvider.GetRequiredService(handlerType);
+        
+        var handler = (IInteractionHandler)serviceProvider.GetRequiredService(handlerType);
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         try
         {
             await context.Responder.DeferAsync(ct);
             await handler.HandleAsync(context, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            logger.LogDebug(
+                "Interaction cancelled for command: /{CommandName}",
+                context.CommandName);
         }
         catch (UserFriendlyException ex)
         {
@@ -52,11 +57,13 @@ public sealed class InteractionDispatcher(
 
             await context.Responder.RespondAsync(InteractionResponse.Text("An unexpected error occurred."), ct);
         }
-
-        stopwatch.Stop();
-        logger.LogDebug(
-            "Handled interaction for command: /{CommandName} in {ElapsedMilliseconds} ms",
-            context.CommandName,
-            stopwatch.ElapsedMilliseconds);
+        finally
+        {
+            stopwatch.Stop();
+            logger.LogDebug(
+                "Handled interaction for command: /{CommandName} in {ElapsedMilliseconds} ms",
+                context.CommandName,
+                stopwatch.ElapsedMilliseconds);
+        }
     }
 }

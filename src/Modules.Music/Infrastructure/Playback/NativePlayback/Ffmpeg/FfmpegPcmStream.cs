@@ -4,9 +4,12 @@ namespace Modules.Music.Infrastructure.Playback.NativePlayback.Ffmpeg;
 
 internal sealed class FfmpegPcmStream(
     Process process,
-    Task inputPump) : Stream
+    Task inputPump,
+    Task stderrTask) : Stream
 {
     private readonly Stream _output = process.StandardOutput.BaseStream;
+
+    private bool _disposed = false;
 
     public override bool CanRead => _output.CanRead;
 
@@ -50,6 +53,11 @@ internal sealed class FfmpegPcmStream(
 
     public override async ValueTask DisposeAsync()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
         try
         {
             if (!process.HasExited)
@@ -77,6 +85,14 @@ internal sealed class FfmpegPcmStream(
 
         try
         {
+            await stderrTask;
+        }
+        catch
+        {
+        }
+
+        try
+        {
             await _output.DisposeAsync();
         }
         catch
@@ -84,7 +100,5 @@ internal sealed class FfmpegPcmStream(
         }
 
         process.Dispose();
-
-        await base.DisposeAsync();
     }
 }

@@ -2,9 +2,13 @@
 
 namespace Modules.Music.Infrastructure.AudioSource.Youtube;
 
-internal class YtDlpStream(Process process) : Stream
+internal class YtDlpStream(
+    Process process,
+    Task stderrTask) : Stream
 {
     private readonly Stream _output = process.StandardOutput.BaseStream;
+
+    private bool _disposed = false;
 
     public override bool CanRead => _output.CanRead;
 
@@ -53,6 +57,36 @@ internal class YtDlpStream(Process process) : Stream
 
     public override async ValueTask DisposeAsync()
     {
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(true);
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            await process.WaitForExitAsync();
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            await stderrTask;
+        }
+        catch
+        {
+        }
+
         try
         {
             await _output.DisposeAsync();
@@ -61,20 +95,6 @@ internal class YtDlpStream(Process process) : Stream
         {
         }
 
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill();
-                await process.WaitForExitAsync();
-            }
-        }
-        catch
-        {
-        }
-
         process.Dispose();
-
-        await base.DisposeAsync();
     }
 }

@@ -1,4 +1,5 @@
-﻿using Infrastructure.Clock;
+﻿using Application.Abstractions;
+using Infrastructure.Clock;
 using Infrastructure.Discord;
 using Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,6 +13,8 @@ public static class DependencyInjection
         services.AddClock();
         services.AddDiscord();
         services.AddPersistence();
+
+        services.AddSingleton<IAppLifetime, AppLifetime>();
 
         return services;
     }
