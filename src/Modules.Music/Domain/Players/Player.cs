@@ -72,9 +72,8 @@ internal sealed class Player : AggregateRoot
         else
         {
             CurrentQueueItem = item;
+            Raise(new PlaybackStartedEvent(this));
         }
-
-        Raise(new PlaybackStartedEvent(this));
     }
 
     public void PlayNext(QueueItem item)
@@ -86,9 +85,8 @@ internal sealed class Player : AggregateRoot
         else
         {
             CurrentQueueItem = item;
+            Raise(new PlaybackStartedEvent(this));
         }
-
-        Raise(new PlaybackStartedEvent(this));
     }
 
     public void Pause()
