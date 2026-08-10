@@ -80,24 +80,24 @@ internal sealed class PlaybackController(
 
                 try
                 {
-                    logger.LogInformation("Starting playback for guild {GuildId}, Track: {TrackTitle}", player.GuildId.Value, track.Title);
+                    logger.LogInformation("Starting playback for guild {GuildId}, Track: {TrackTitle}", player.GuildId, track.Title);
 
                     var playback = await playbackFactory.StartAsync(track, runtime.VoiceSession, ct);
                     runtime.AttachPlayback(playback);
 
                     await playback.Completion;
 
-                    logger.LogInformation("Track finished for guild {GuildId}, Track: {TrackTitle}", player.GuildId.Value, track.Title);
+                    logger.LogInformation("Track finished for guild {GuildId}, Track: {TrackTitle}", player.GuildId, track.Title);
 
                     player.FinishCurrentTrack();
                 }
                 catch (OperationCanceledException)
                 {
-                    logger.LogInformation("Playback cancelled for guild {GuildId}.", player.GuildId.Value);
+                    logger.LogInformation("Playback cancelled for guild {GuildId}.", player.GuildId);
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Error occurred while playing track for guild {GuildId}.", player.GuildId.Value);
+                    logger.LogError(ex, "Error occurred while playing track for guild {GuildId}.", player.GuildId);
                     player.FinishCurrentTrack();
                 }
                 finally

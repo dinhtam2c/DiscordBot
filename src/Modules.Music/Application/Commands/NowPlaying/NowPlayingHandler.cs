@@ -30,7 +30,7 @@ internal sealed class NowPlayingHandler(
         var currentQueueItem = player.CurrentQueueItem!;
         var currentTrack = currentQueueItem.Track;
         var requester = await discordUserService.GetUserAsync(guildId, currentQueueItem.RequesterId, ct);
-        var requesterName = requester?.DisplayName ?? requester?.Username ?? $"User {currentQueueItem.RequesterId.Value}";
+        var requesterName = requester?.DisplayName ?? requester?.Username ?? $"User {currentQueueItem.RequesterId}";
 
         await context.Responder.RespondAsync(
             new InteractionResponse

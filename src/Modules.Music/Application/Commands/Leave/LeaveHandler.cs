@@ -20,7 +20,7 @@ internal sealed class LeaveHandler(
         var player = await playerRepository.GetByIdAsync(guildId, ct)
             ?? throw new UserFriendlyException("Not in a voice channel for playing music.");
 
-        logger.LogInformation("Player for Guild {GuildId} is leaving the voice channel.", player.GuildId.Value);
+        logger.LogInformation("Player for Guild {GuildId} is leaving the voice channel.", player.GuildId);
 
         player.Leave();
         await playerRepository.RemoveAsync(guildId, ct);
