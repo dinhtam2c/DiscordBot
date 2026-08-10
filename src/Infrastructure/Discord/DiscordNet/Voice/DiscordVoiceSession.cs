@@ -30,7 +30,7 @@ internal sealed class DiscordVoiceSession(
 
     private AudioOutStream GetOrCreateStream()
     {
-        return _stream ??= audioClient.CreatePCMStream(AudioApplication.Music, bufferMillis: 2000);
+        return _stream ??= audioClient.CreatePCMStream(AudioApplication.Music, bufferMillis: 3000);
     }
 
     public void Dispose()
