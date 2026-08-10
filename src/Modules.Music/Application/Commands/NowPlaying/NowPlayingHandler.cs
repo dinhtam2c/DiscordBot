@@ -27,9 +27,10 @@ internal sealed class NowPlayingHandler(
             return;
         }
 
-        var currentTrack = player.CurrentTrack!;
-        var requester = await discordUserService.GetUserAsync(guildId, currentTrack.RequesterId, ct);
-        var requesterName = requester?.DisplayName ?? requester?.Username ?? $"User {currentTrack.RequesterId.Value}";
+        var currentQueueItem = player.CurrentQueueItem!;
+        var currentTrack = currentQueueItem.Track;
+        var requester = await discordUserService.GetUserAsync(guildId, currentQueueItem.RequesterId, ct);
+        var requesterName = requester?.DisplayName ?? requester?.Username ?? $"User {currentQueueItem.RequesterId.Value}";
 
         await context.Responder.RespondAsync(
             new InteractionResponse
@@ -39,14 +40,14 @@ internal sealed class NowPlayingHandler(
                     new ResponseEmbed
                     {
                         Title = "Now Playing",
-                        Description = $"**[{currentTrack.Track.Title}]({currentTrack.Track.SourceUrl})**",
-                        ThumbnailUrl = currentTrack.Track.ThumbnailUrl,
+                        Description = $"**[{currentTrack.Title}]({currentTrack.SourceUrl})**",
+                        ThumbnailUrl = currentTrack.ThumbnailUrl,
                         Fields =
                         [
-                            new("Artist", currentTrack.Track.Artist, true),
-                            new("Duration", currentTrack.Track.Duration.TotalHours >= 1 ? currentTrack.Track.Duration.ToString(@"hh\:mm\:ss") : currentTrack.Track.Duration.ToString(@"mm\:ss"), true),
+                            new("Artist", currentTrack.Artist, true),
+                            new("Duration", currentTrack.Duration.TotalHours >= 1 ? currentTrack.Duration.ToString(@"hh\:mm\:ss") : currentTrack.Duration.ToString(@"mm\:ss"), true),
                             new("Requested by", requesterName, true),
-                            new("Requested at", currentTrack.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true),
+                            new("Requested at", currentQueueItem.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true),
                         ]
                     }
                 ]

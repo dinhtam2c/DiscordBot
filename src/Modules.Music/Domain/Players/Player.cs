@@ -10,7 +10,9 @@ internal sealed class Player : AggregateRoot
 
     public ChannelId? VoiceChannelId { get; private set; }
 
-    public QueueItem? CurrentTrack { get; private set; } = null;
+    public QueueItem? CurrentQueueItem { get; private set; } = null;
+
+    public Track? CurrentTrack => CurrentQueueItem?.Track;
 
     public Volume Volume { get; private set; } = Volume.Create(50);
 
@@ -69,7 +71,7 @@ internal sealed class Player : AggregateRoot
         }
         else
         {
-            CurrentTrack = item;
+            CurrentQueueItem = item;
         }
 
         Raise(new PlaybackStartedEvent(this));
@@ -83,7 +85,7 @@ internal sealed class Player : AggregateRoot
         }
         else
         {
-            CurrentTrack = item;
+            CurrentQueueItem = item;
         }
 
         Raise(new PlaybackStartedEvent(this));
@@ -101,49 +103,43 @@ internal sealed class Player : AggregateRoot
             IsPaused = false;
     }
 
-    public QueueItem? Skip()
+    public void Skip()
     {
         IsPaused = false;
+
+        if (_queue.Count > 0)
+        {
+            CurrentQueueItem = _queue.Dequeue();
+        }
+        else
+        {
+            CurrentQueueItem = null;
+        }
 
         if (HasCurrentTrack)
         {
             Raise(new TrackSkippedEvent(GuildId));
         }
-
-        if (_queue.Count > 0)
-        {
-            CurrentTrack = _queue.Dequeue();
-            return CurrentTrack;
-        }
-        else
-        {
-            CurrentTrack = null;
-            return null;
-        }
     }
 
-    public QueueItem? FinishCurrentTrack()
+    public void FinishCurrentTrack()
     {
         IsPaused = false;
         if (LoopMode == LoopMode.Track && HasCurrentTrack)
-        {
-            return CurrentTrack;
-        }
+            return;
 
         if (_queue.Count > 0)
         {
             if (LoopMode == LoopMode.Queue && HasCurrentTrack)
             {
-                _queue.Enqueue(CurrentTrack!);
+                _queue.Enqueue(CurrentQueueItem!);
             }
 
-            CurrentTrack = _queue.Dequeue();
-            return CurrentTrack;
+            CurrentQueueItem = _queue.Dequeue();
         }
         else
         {
-            CurrentTrack = null;
-            return null;
+            CurrentQueueItem = null;
         }
     }
 
@@ -154,7 +150,7 @@ internal sealed class Player : AggregateRoot
         if (!IsConnected || !HasCurrentTrack)
             return;
 
-        CurrentTrack = null;
+        CurrentQueueItem = null;
         _queue.Clear();
         Raise(new PlaybackStoppedEvent(GuildId));
     }

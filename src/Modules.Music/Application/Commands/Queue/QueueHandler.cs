@@ -27,7 +27,7 @@ internal sealed class QueueHandler(IPlayerRepository playerRepository) : IIntera
 
         if (player.HasCurrentTrack)
         {
-            var currentTrack = player.CurrentTrack!.Track;
+            var currentTrack = player.CurrentTrack!;
             description.AppendLine($"**Now playing:** [{currentTrack.Title}]({currentTrack.SourceUrl})");
             description.AppendLine();
         }
@@ -40,7 +40,8 @@ internal sealed class QueueHandler(IPlayerRepository playerRepository) : IIntera
             {
                 var item = player.Queue[index];
                 var position = index + 1;
-                description.AppendLine($"{position}. [{item.Track.Title}]({item.Track.SourceUrl}) — " + (item.Track.Duration.TotalHours >= 1 ? item.Track.Duration.ToString(@"hh\:mm\:ss") : item.Track.Duration.ToString(@"mm\:ss")));
+                description.AppendLine($"{position}. [{item.Track.Title}]({item.Track.SourceUrl}) — "
+                    + (item.Track.Duration.TotalHours >= 1 ? item.Track.Duration.ToString(@"hh\:mm\:ss") : item.Track.Duration.ToString(@"mm\:ss")));
             }
         }
 

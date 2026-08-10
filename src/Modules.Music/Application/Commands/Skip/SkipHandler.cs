@@ -26,7 +26,7 @@ internal class SkipHandler(
             return;
         }
 
-        var track = player.CurrentTrack!.Track;
+        var track = player.CurrentTrack!;
 
         logger.LogInformation("Skip command received. GuildId: {GuildId}, CurrentTrack: {CurrentTrack}", guildId, track.Title);
 

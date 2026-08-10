@@ -76,7 +76,7 @@ internal sealed class PlaybackController(
                     break;
                 }
 
-                var track = player.CurrentTrack!.Track;
+                var track = player.CurrentTrack!;
 
                 try
                 {
