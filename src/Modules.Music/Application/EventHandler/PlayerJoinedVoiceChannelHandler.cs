@@ -12,6 +12,6 @@ internal sealed class PlayerJoinedVoiceChannelHandler(
     public async Task HandleAsync(PlayerJoinedVoiceChannelEvent @event, CancellationToken ct)
     {
         await voiceSessionManager.JoinAsync(@event.GuildId, @event.VoiceChannelId, ct);
-        logger.LogInformation("Player joined voice channel {VoiceChannelId} in guild {GuildId}", @event.VoiceChannelId, @event.GuildId);
+        logger.LogInformation("Player joined voice channel {VoiceChannelId} in guild {GuildId}", @event.VoiceChannelId.Value, @event.GuildId.Value);
     }
 }
