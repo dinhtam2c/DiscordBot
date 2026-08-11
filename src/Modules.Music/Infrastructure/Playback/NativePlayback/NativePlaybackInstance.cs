@@ -50,9 +50,8 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
 
         try
         {
-            var url = await source.GetUrlAsync(track, ct);
-
-            await using var pcmStream = await transcoder.OpenPcmStreamAsync(url, ct);
+            await using var sourceStream = await source.OpenAsync(track, ct);
+            await using var pcmStream = await transcoder.OpenPcmStreamAsync(sourceStream, ct);
 
             var producer = ProduceAsync(pcmStream, ct);
             var consumer = ConsumeAsync(voiceSession, ct);
