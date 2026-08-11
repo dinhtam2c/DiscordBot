@@ -4,7 +4,7 @@ namespace Modules.Music.Infrastructure.Playback.NativePlayback.Ffmpeg;
 
 internal sealed class FfmpegStream(
     Process process,
-    Task inputPump,
+    Task? inputPump,
     Task stderrTask) : Stream
 {
     private readonly Stream _output = process.StandardOutput.BaseStream;
@@ -75,12 +75,15 @@ internal sealed class FfmpegStream(
         {
         }
 
-        try
+        if (inputPump is not null)
         {
-            await inputPump;
-        }
-        catch
-        {
+            try
+            {
+                await inputPump;
+            }
+            catch
+            {
+            }
         }
 
         try

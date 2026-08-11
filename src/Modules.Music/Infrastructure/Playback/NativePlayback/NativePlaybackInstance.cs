@@ -12,7 +12,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
 
     private readonly Task _playbackTask;
 
-    private const int BufferSize = 81920;
+    private const int BufferSize = 3840 * 10;
 
     public Task Completion => _playbackTask;
 
@@ -35,8 +35,8 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
     {
         var ct = _cts.Token;
 
-        await using var sourceStream = await source.OpenAsync(track, ct);
-        await using var pcmStream = await transcoder.OpenPcmStreamAsync(sourceStream, ct);
+        var url = await source.GetUrlAsync(track, ct);
+        await using var pcmStream = await transcoder.OpenPcmStreamAsync(url, ct);
 
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
 

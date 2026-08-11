@@ -5,37 +5,78 @@ using System.Diagnostics;
 
 namespace Modules.Music.Infrastructure.Playback.NativePlayback.Ffmpeg;
 
-internal class FfmpegAudioTranscoder(
+internal sealed class FfmpegAudioTranscoder(
     IOptions<FfmpegOptions> options,
     ILogger<FfmpegAudioTranscoder> logger) : IAudioTranscoder
 {
     public Task<Stream> OpenPcmStreamAsync(Stream source, CancellationToken ct)
-    {
-        return OpenStreamAsync(source, ConfigurePcmOutput, ct);
-    }
+        => OpenStreamAsync(
+            input: "pipe:0",
+            configureInput: psi => psi.RedirectStandardInput = true,
+            configureOutput: ConfigurePcmOutput,
+            source,
+            ct);
+
+    public Task<Stream> OpenPcmStreamAsync(string source, CancellationToken ct)
+        => OpenStreamAsync(
+            input: source,
+            configureInput: null,
+            configureOutput: ConfigurePcmOutput,
+            source: null,
+            ct);
 
     public Task<Stream> OpenOpusStreamAsync(Stream source, CancellationToken ct)
-    {
-        return OpenStreamAsync(source, ConfigureOpusOutput, ct);
-    }
+        => OpenStreamAsync(
+            input: "pipe:0",
+            configureInput: psi => psi.RedirectStandardInput = true,
+            configureOutput: ConfigureOpusOutput,
+            source,
+            ct);
 
-    private Task<Stream> OpenStreamAsync(Stream source, Action<ProcessStartInfo> configureOutput, CancellationToken ct)
+    public Task<Stream> OpenOpusStreamAsync(string source, CancellationToken ct)
+        => OpenStreamAsync(
+            input: source,
+            configureInput: null,
+            configureOutput: ConfigureOpusOutput,
+            source: null,
+            ct);
+
+    private Task<Stream> OpenStreamAsync(
+        string input,
+        Action<ProcessStartInfo>? configureInput,
+        Action<ProcessStartInfo> configureOutput,
+        Stream? source,
+        CancellationToken ct)
     {
         var psi = new ProcessStartInfo
         {
             FileName = options.Value.FfmpegPath,
-            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
 
+        configureInput?.Invoke(psi);
+
         psi.ArgumentList.Add("-loglevel");
         psi.ArgumentList.Add("error");
 
+        // Reconnect HTTP input when using a direct media URL.
+        if (source is null)
+        {
+            psi.ArgumentList.Add("-reconnect");
+            psi.ArgumentList.Add("1");
+
+            psi.ArgumentList.Add("-reconnect_streamed");
+            psi.ArgumentList.Add("1");
+
+            psi.ArgumentList.Add("-reconnect_delay_max");
+            psi.ArgumentList.Add("5");
+        }
+
         psi.ArgumentList.Add("-i");
-        psi.ArgumentList.Add("pipe:0");
+        psi.ArgumentList.Add(input);
 
         configureOutput(psi);
 
@@ -49,7 +90,13 @@ internal class FfmpegAudioTranscoder(
             logger.LogDebug("Started ffmpeg process with PID {Pid}", process.Id);
 
             var stderrTask = DrainStderrAsync(process);
-            var inputPump = PumpAsync(source, process, ct);
+
+            Task? inputPump = null;
+
+            if (source is not null)
+            {
+                inputPump = PumpAsync(source, process, ct);
+            }
 
             Stream stream = new FfmpegStream(process, inputPump, stderrTask);
 
@@ -98,17 +145,28 @@ internal class FfmpegAudioTranscoder(
         psi.ArgumentList.Add("opus");
     }
 
-    private async Task PumpAsync(Stream source, Process process, CancellationToken ct)
+    private async Task PumpAsync(
+        Stream source,
+        Process process,
+        CancellationToken ct)
     {
         try
         {
-            logger.LogTrace("Pumping data to ffmpeg process with PID {Pid}", process.Id);
+            logger.LogTrace(
+                "Pumping data to ffmpeg process with PID {Pid}",
+                process.Id);
 
-            await source.CopyToAsync(process.StandardInput.BaseStream, ct);
+            await source.CopyToAsync(
+                process.StandardInput.BaseStream,
+                ct);
+
             await process.StandardInput.BaseStream.FlushAsync(ct);
+
             process.StandardInput.Close();
 
-            logger.LogTrace("Finished pumping data to ffmpeg PID {Pid}.", process.Id);
+            logger.LogTrace(
+                "Finished pumping data to ffmpeg PID {Pid}.",
+                process.Id);
         }
         catch (OperationCanceledException)
         {
@@ -117,7 +175,9 @@ internal class FfmpegAudioTranscoder(
         }
         catch (Exception ex)
         {
-            logger.LogTrace(ex, "Error while pumping data to ffmpeg.");
+            logger.LogTrace(
+                ex,
+                "Error while pumping data to ffmpeg.");
 
             try
             {
@@ -136,14 +196,20 @@ internal class FfmpegAudioTranscoder(
         try
         {
             var stderr = await process.StandardError.ReadToEndAsync();
+
             if (!string.IsNullOrWhiteSpace(stderr))
             {
-                logger.LogWarning("ffmpeg error output: {ErrorOutput}", stderr);
+                logger.LogWarning(
+                    "ffmpeg error output: {ErrorOutput}",
+                    stderr);
             }
         }
         catch (Exception ex)
         {
-            logger.LogTrace(ex, "Error while draining ffmpeg stderr.");
+            logger.LogTrace(
+                ex,
+                "Error while draining ffmpeg stderr.");
+
             throw;
         }
     }
