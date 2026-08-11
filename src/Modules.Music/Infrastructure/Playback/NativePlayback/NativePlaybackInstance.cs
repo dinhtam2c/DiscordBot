@@ -3,7 +3,6 @@ using Modules.Music.Application.AudioSource;
 using Modules.Music.Application.Playback;
 using Modules.Music.Domain.Players;
 using System.Buffers;
-using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace Modules.Music.Infrastructure.Playback.NativePlayback;
@@ -59,10 +58,6 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
             var consumer = ConsumeAsync(voiceSession, ct);
 
             await Task.WhenAll(producer, consumer);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-
         }
         finally
         {

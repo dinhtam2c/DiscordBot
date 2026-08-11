@@ -21,6 +21,8 @@ internal sealed class PlaybackSession(
     private bool _stopping = false;
     private bool _disposed = false;
 
+    public Task Completion => _loopTask ?? Task.CompletedTask;
+
     public void Start()
     {
         lock (_sync)
@@ -86,6 +88,8 @@ internal sealed class PlaybackSession(
                 await StopCurrentPlaybackAsync();
             }
         }
+
+        _loopTask = null;
     }
 
     private bool TryAttachPlayback(IPlaybackInstance playback)

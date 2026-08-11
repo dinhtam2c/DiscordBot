@@ -27,8 +27,43 @@ internal sealed class PlaybackController(
             throw new InvalidOperationException($"A playback session is already running for guild {player.GuildId}.");
         }
 
-        logger.LogInformation("Starting playback session for guild {GuildId}.", player.GuildId);
-        session.Start();
+        try
+        {
+            logger.LogInformation("Starting playback session for guild {GuildId}.", player.GuildId);
+
+            session.Start();
+            _ = ObserveSession(player.GuildId, session);
+        }
+        catch
+        {
+            _sessions.TryRemove(player.GuildId, out _);
+            await session.DisposeAsync();
+            throw;
+        }
+    }
+
+    private async Task ObserveSession(GuildId guildId, PlaybackSession session)
+    {
+        try
+        {
+            await session.Completion;
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation("Playback session for guild {GuildId} was cancelled.", guildId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Playback session for guild {GuildId} terminated with an error.", guildId);
+        }
+        finally
+        {
+            if (_sessions.TryRemove(guildId, out _))
+            {
+                logger.LogInformation("Playback session for guild {GuildId} has ended.", guildId);
+                await session.DisposeAsync();
+            }
+        }
     }
 
     public async Task StopCurrentAsync(GuildId guildId)
