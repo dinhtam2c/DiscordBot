@@ -3,6 +3,8 @@ using Modules.Music.Application.AudioSource;
 using Modules.Music.Application.Playback;
 using Modules.Music.Domain.Players;
 using System.Buffers;
+using System.Diagnostics;
+using System.Threading.Channels;
 
 namespace Modules.Music.Infrastructure.Playback.NativePlayback;
 
@@ -12,7 +14,12 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
 
     private readonly Task _playbackTask;
 
-    private const int BufferSize = 3840 * 10;
+    private const int ChunkSize = 3840 * 10; // 200 ms
+    private const int ChannelCapacity = 10;  // ~2 seconds
+
+    private readonly record struct PcmChunk(byte[] Buffer, int Length);
+
+    private readonly Channel<PcmChunk> _channel;
 
     public Task Completion => _playbackTask;
 
@@ -28,6 +35,13 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
         CancellationToken externalToken)
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+        _channel = Channel.CreateBounded<PcmChunk>(new BoundedChannelOptions(ChannelCapacity)
+        {
+            FullMode = BoundedChannelFullMode.Wait,
+            SingleReader = true,
+            SingleWriter = true
+        });
+
         _playbackTask = RunAsync(source, track, transcoder, voiceSession);
     }
 
@@ -35,28 +49,92 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
     {
         var ct = _cts.Token;
 
-        var url = await source.GetUrlAsync(track, ct);
-        await using var pcmStream = await transcoder.OpenPcmStreamAsync(url, ct);
+        try
+        {
+            var url = await source.GetUrlAsync(track, ct);
 
-        var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+            await using var pcmStream = await transcoder.OpenPcmStreamAsync(url, ct);
 
+            var producer = ProduceAsync(pcmStream, ct);
+            var consumer = ConsumeAsync(voiceSession, ct);
+
+            await Task.WhenAll(producer, consumer);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+
+        }
+        finally
+        {
+            _channel.Writer.TryComplete();
+
+            DrainAndReturnBuffers();
+        }
+    }
+
+    private async Task ProduceAsync(Stream input, CancellationToken ct)
+    {
         try
         {
             while (!ct.IsCancellationRequested)
             {
-                var read = await pcmStream.ReadAsync(buffer.AsMemory(0, BufferSize), ct);
+                var buffer = ArrayPool<byte>.Shared.Rent(ChunkSize);
 
-                if (read == 0)
-                    break;
+                try
+                {
+                    var read = await input.ReadAsync(buffer.AsMemory(0, ChunkSize), ct);
 
-                await voiceSession.WritePcmAsync(buffer.AsMemory(0, read), ct);
+                    if (read == 0)
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        break;
+                    }
+
+                    await _channel.Writer.WriteAsync(new PcmChunk(buffer, read), ct);
+
+                    buffer = null!;
+                }
+                catch
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    throw;
+                }
+            }
+        }
+        finally
+        {
+            _channel.Writer.TryComplete();
+        }
+    }
+
+    private async Task ConsumeAsync(IVoiceSession voiceSession, CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var chunk in _channel.Reader.ReadAllAsync(ct))
+            {
+                try
+                {
+                    await voiceSession.WritePcmAsync(chunk.Buffer.AsMemory(0, chunk.Length), ct);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(chunk.Buffer);
+                }
             }
 
             await voiceSession.FlushAsync(ct);
         }
-        finally
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private void DrainAndReturnBuffers()
+    {
+        while (_channel.Reader.TryRead(out var frame))
+        {
+            ArrayPool<byte>.Shared.Return(frame.Buffer);
         }
     }
 
