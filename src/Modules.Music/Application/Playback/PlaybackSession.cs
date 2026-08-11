@@ -6,9 +6,9 @@ using Modules.Music.Domain.Players;
 internal sealed class PlaybackSession(
     IPlaybackFactory playbackFactory,
     IVoiceSession voiceSession,
-    CancellationToken externalToken,
     Player player,
-    ILogger<PlaybackSession> logger) : IAsyncDisposable
+    ILogger<PlaybackSession> logger,
+    CancellationToken externalToken) : IAsyncDisposable
 {
     private readonly Lock _sync = new();
 
@@ -30,8 +30,7 @@ internal sealed class PlaybackSession(
             if (_started)
                 throw new InvalidOperationException("Playback session has already been started.");
 
-            if (_stopping || _disposed)
-                throw new ObjectDisposedException(nameof(PlaybackSession));
+            ObjectDisposedException.ThrowIf(_stopping || _disposed, this);
 
             _started = true;
             _loopTask = RunLoopAsync();

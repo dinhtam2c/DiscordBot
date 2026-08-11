@@ -97,14 +97,14 @@ internal sealed class YoutubeAudioSource(
         }
     }
 
-    private void ConfigureUrlExtraction(ProcessStartInfo psi, Track track)
+    private static void ConfigureUrlExtraction(ProcessStartInfo psi, Track track)
     {
         psi.ArgumentList.Add("--get-url");
 
         ConfigureCommonArguments(psi, track);
     }
 
-    private void ConfigureStreamDownload(ProcessStartInfo psi, Track track)
+    private static void ConfigureStreamDownload(ProcessStartInfo psi, Track track)
     {
         psi.ArgumentList.Add("--output");
         psi.ArgumentList.Add("-");

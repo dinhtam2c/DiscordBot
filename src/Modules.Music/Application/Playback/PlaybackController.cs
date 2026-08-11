@@ -19,7 +19,7 @@ internal sealed class PlaybackController(
     public async Task StartAsync(Player player, IVoiceSession voiceSession)
     {
         var lg = serviceProvider.GetRequiredService<ILogger<PlaybackSession>>();
-        var session = new PlaybackSession(playbackFactory, voiceSession, appLifetime.Stopping, player, lg);
+        var session = new PlaybackSession(playbackFactory, voiceSession, player, lg, appLifetime.Stopping);
 
         if (!_sessions.TryAdd(player.GuildId, session))
         {
