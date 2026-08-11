@@ -73,7 +73,7 @@ internal sealed class LaviaiHandler(
                         [
                             new("Artist", track.Artist, true),
                             new("Duration", track.Duration.ToString(@"mm\:ss"), true),
-                            new("Position", now ? "Now Playing" : "1", true),
+                            new("Position", now ? "Now Playing" : "#1", true),
                         ]
                     }
                 ]

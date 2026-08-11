@@ -7,6 +7,7 @@ using Modules.Music.Application.Commands.Leave;
 using Modules.Music.Application.Commands.Loop;
 using Modules.Music.Application.Commands.NowPlaying;
 using Modules.Music.Application.Commands.Play;
+using Modules.Music.Application.Commands.PlayNext;
 using Modules.Music.Application.Commands.Queue;
 using Modules.Music.Application.Commands.Remove;
 using Modules.Music.Application.Commands.Skip;
@@ -45,6 +46,7 @@ public static class DependencyInjection
         services.AddInteraction<JoinCommand, JoinHandler>();
         services.AddInteraction<LeaveCommand, LeaveHandler>();
         services.AddInteraction<PlayCommand, PlayHandler>();
+        services.AddInteraction<PlayNextCommand, PlayNextHandler>();
         services.AddInteraction<SkipCommand, SkipHandler>();
         services.AddInteraction<LoopCommand, LoopHandler>();
         services.AddInteraction<StopCommand, StopHandler>();
