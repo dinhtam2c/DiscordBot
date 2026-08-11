@@ -168,6 +168,11 @@ internal sealed class Player : AggregateRoot
         _queue.RemoveAt(index);
     }
 
+    public void MoveInQueue(int index, int newIndex)
+    {
+        _queue.Move(index, newIndex);
+    }
+
     public void ClearQueue()
     {
         _queue.Clear();

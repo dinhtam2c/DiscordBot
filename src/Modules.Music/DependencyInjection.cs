@@ -5,6 +5,7 @@ using Modules.Music.Application.Commands.Join;
 using Modules.Music.Application.Commands.Laviai;
 using Modules.Music.Application.Commands.Leave;
 using Modules.Music.Application.Commands.Loop;
+using Modules.Music.Application.Commands.Move;
 using Modules.Music.Application.Commands.NowPlaying;
 using Modules.Music.Application.Commands.Play;
 using Modules.Music.Application.Commands.PlayNext;
@@ -51,6 +52,7 @@ public static class DependencyInjection
         services.AddInteraction<LoopCommand, LoopHandler>();
         services.AddInteraction<StopCommand, StopHandler>();
         services.AddInteraction<RemoveCommand, RemoveHandler>();
+        services.AddInteraction<MoveCommand, MoveHandler>();
 
         //troll
         services.AddInteraction<LaviaiCommand, LaviaiHandler>();

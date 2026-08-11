@@ -43,6 +43,17 @@ internal sealed class PlaybackQueue
         _items.RemoveAt(index);
     }
 
+    public void Move(int oldIndex, int newIndex)
+    {
+        if (oldIndex < 0 || oldIndex >= _items.Count)
+            throw new ArgumentOutOfRangeException(nameof(oldIndex), "Old index is out of range.");
+        if (newIndex < 0 || newIndex >= _items.Count)
+            throw new ArgumentOutOfRangeException(nameof(newIndex), "New index is out of range.");
+        var item = _items[oldIndex];
+        _items.RemoveAt(oldIndex);
+        _items.Insert(newIndex, item);
+    }
+
     public void Clear()
     {
         _items.Clear();
