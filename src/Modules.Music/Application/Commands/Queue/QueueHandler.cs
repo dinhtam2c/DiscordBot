@@ -15,7 +15,7 @@ internal sealed class QueueHandler(IPlayerRepository playerRepository) : IIntera
         var guildId = context.GuildId ?? throw new InvalidOperationException("GuildId is not found.");
 
         var player = await playerRepository.GetByIdAsync(guildId, ct)
-            ?? throw new UserFriendlyException("No player found for this server.");
+            ?? throw new UserFriendlyException("Player not found. Start playing music first.");
 
         if (!player.HasCurrentTrack && !player.HasQueue)
         {

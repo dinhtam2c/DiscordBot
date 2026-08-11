@@ -1,4 +1,5 @@
 ﻿using Application.Abstractions;
+using Application.Discord.Interactions;
 using Application.Discord.Interactions.Context;
 using Application.Discord.Interactions.Handler;
 using Application.Discord.Interactions.Response;
@@ -18,7 +19,7 @@ internal class SkipHandler(
         var guildId = context.GuildId ?? throw new InvalidOperationException("GuildId is not found.");
 
         var player = await playerRepository.GetByIdAsync(guildId, ct)
-            ?? throw new InvalidOperationException("Player is not found.");
+            ?? throw new UserFriendlyException("Player not found. Start playing music first.");
 
         if (!player.HasCurrentTrack)
         {

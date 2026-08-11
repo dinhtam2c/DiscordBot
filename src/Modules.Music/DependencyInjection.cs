@@ -8,6 +8,7 @@ using Modules.Music.Application.Commands.Loop;
 using Modules.Music.Application.Commands.NowPlaying;
 using Modules.Music.Application.Commands.Play;
 using Modules.Music.Application.Commands.Queue;
+using Modules.Music.Application.Commands.Remove;
 using Modules.Music.Application.Commands.Skip;
 using Modules.Music.Application.Commands.Stop;
 using Modules.Music.Application.Commands.Tungbeo;
@@ -47,6 +48,7 @@ public static class DependencyInjection
         services.AddInteraction<SkipCommand, SkipHandler>();
         services.AddInteraction<LoopCommand, LoopHandler>();
         services.AddInteraction<StopCommand, StopHandler>();
+        services.AddInteraction<RemoveCommand, RemoveHandler>();
 
         //troll
         services.AddInteraction<LaviaiCommand, LaviaiHandler>();

@@ -17,7 +17,7 @@ internal class LoopHandler(
     {
         var guildId = context.GuildId ?? throw new InvalidOperationException("GuildId is not found.");
         var player = await playerRepository.GetByIdAsync(guildId, ct)
-            ?? throw new UserFriendlyException("No player found for this server.");
+            ?? throw new UserFriendlyException("Player not found. Start playing music first.");
 
         var mode = context.Options.GetRequired<LoopMode>("mode");
         player.SetLoopMode(mode);

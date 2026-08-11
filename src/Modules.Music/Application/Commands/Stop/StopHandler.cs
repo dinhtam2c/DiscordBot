@@ -18,7 +18,7 @@ internal sealed class StopHandler(
     {
         var guildId = context.GuildId ?? throw new InvalidOperationException("Guild ID is required.");
         var player = await playerRepository.GetByIdAsync(guildId, ct)
-            ?? throw new UserFriendlyException("No playback in progress.");
+            ?? throw new UserFriendlyException("Player not found. Start playing music first.");
 
         logger.LogInformation("Stopping playback for guild {GuildId}.", guildId);
 

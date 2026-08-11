@@ -170,14 +170,12 @@ internal sealed class FfmpegAudioTranscoder(
         }
         catch (OperationCanceledException)
         {
-            logger.LogTrace("ffmpeg input pump cancelled.");
+            logger.LogTrace("ffmpeg input pump cancelled, PID: {Pid}.", process.Id);
             throw;
         }
         catch (Exception ex)
         {
-            logger.LogTrace(
-                ex,
-                "Error while pumping data to ffmpeg.");
+            logger.LogTrace(ex, "Error while pumping data to ffmpeg PID {Pid}.", process.Id);
 
             try
             {
@@ -199,16 +197,12 @@ internal sealed class FfmpegAudioTranscoder(
 
             if (!string.IsNullOrWhiteSpace(stderr))
             {
-                logger.LogWarning(
-                    "ffmpeg error output: {ErrorOutput}",
-                    stderr);
+                logger.LogWarning("ffmpeg PID {Pid} error output: {ErrorOutput}", process.Id, stderr);
             }
         }
         catch (Exception ex)
         {
-            logger.LogTrace(
-                ex,
-                "Error while draining ffmpeg stderr.");
+            logger.LogTrace(ex, "Error while draining ffmpeg stderr PID {Pid}.", process.Id);
 
             throw;
         }
