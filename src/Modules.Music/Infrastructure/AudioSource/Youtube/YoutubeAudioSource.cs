@@ -109,6 +109,15 @@ internal sealed class YoutubeAudioSource(
         psi.ArgumentList.Add("--output");
         psi.ArgumentList.Add("-");
 
+        psi.ArgumentList.Add("--retries");
+        psi.ArgumentList.Add("infinite");
+
+        psi.ArgumentList.Add("--fragment-retries");
+        psi.ArgumentList.Add("infinite");
+
+        psi.ArgumentList.Add("--retry-sleep");
+        psi.ArgumentList.Add("5");
+
         ConfigureCommonArguments(psi, track);
     }
 
