@@ -1,6 +1,7 @@
 ﻿using Application;
 using Application.Event;
 using Microsoft.Extensions.DependencyInjection;
+using Modules.Music.Application.Commands.Clear;
 using Modules.Music.Application.Commands.Join;
 using Modules.Music.Application.Commands.Laviai;
 using Modules.Music.Application.Commands.Leave;
@@ -50,18 +51,18 @@ public static class DependencyInjection
         services.AddInteraction<PlayCommand, PlayHandler>();
         services.AddInteraction<PlayNextCommand, PlayNextHandler>();
         services.AddInteraction<SkipCommand, SkipHandler>();
+        services.AddInteraction<NowPlayingCommand, NowPlayingHandler>();
+        services.AddInteraction<QueueCommand, QueueHandler>();
         services.AddInteraction<LoopCommand, LoopHandler>();
         services.AddInteraction<StopCommand, StopHandler>();
         services.AddInteraction<RemoveCommand, RemoveHandler>();
         services.AddInteraction<MoveCommand, MoveHandler>();
         services.AddInteraction<ShuffleCommand, ShuffleHandler>();
+        services.AddInteraction<ClearCommand, ClearHandler>();
 
         //troll
         services.AddInteraction<LaviaiCommand, LaviaiHandler>();
         services.AddInteraction<TungbeoCommand, TungbeoHandler>();
-
-        services.AddInteraction<NowPlayingCommand, NowPlayingHandler>();
-        services.AddInteraction<QueueCommand, QueueHandler>();
 
         return services;
     }

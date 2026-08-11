@@ -12,10 +12,10 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddUtilityModule(this IServiceCollection services)
     {
-        services.AddInteraction<PingCommand, PingHandler>();
-        services.AddInteraction<AboutCommand, AboutHandler>();
-        services.AddInteraction<EchoCommand, EchoHandler>();
         services.AddInteraction<HelpCommand, HelpHandler>();
+        services.AddInteraction<AboutCommand, AboutHandler>();
+        services.AddInteraction<PingCommand, PingHandler>();
+        services.AddInteraction<EchoCommand, EchoHandler>();
         services.AddInteraction<UserInfoCommand, UserInfoHandler>();
 
         return services;
