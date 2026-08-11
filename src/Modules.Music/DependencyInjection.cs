@@ -11,6 +11,7 @@ using Modules.Music.Application.Commands.Play;
 using Modules.Music.Application.Commands.PlayNext;
 using Modules.Music.Application.Commands.Queue;
 using Modules.Music.Application.Commands.Remove;
+using Modules.Music.Application.Commands.Shuffle;
 using Modules.Music.Application.Commands.Skip;
 using Modules.Music.Application.Commands.Stop;
 using Modules.Music.Application.Commands.Tungbeo;
@@ -53,6 +54,7 @@ public static class DependencyInjection
         services.AddInteraction<StopCommand, StopHandler>();
         services.AddInteraction<RemoveCommand, RemoveHandler>();
         services.AddInteraction<MoveCommand, MoveHandler>();
+        services.AddInteraction<ShuffleCommand, ShuffleHandler>();
 
         //troll
         services.AddInteraction<LaviaiCommand, LaviaiHandler>();
