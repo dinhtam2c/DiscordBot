@@ -20,13 +20,13 @@ internal sealed class RemoveHandler(
         var player = await playerRepository.GetByIdAsync(guildId, ct)
             ?? throw new UserFriendlyException("Player not found. Start playing music first.");
 
-        var index = context.Options.GetRequired<int>("index");
+        var index = context.Options.GetRequired<long>("index");
         if (index < 1 || index > player.Queue.Count)
             throw new UserFriendlyException($"Invalid index. Please provide a number between 1 and {player.Queue.Count}.");
 
         logger.LogInformation("Removing track at position {Index} from the queue for guild {GuildId}", index, guildId);
 
-        player.RemoveFromQueue(index);
+        player.RemoveFromQueue((int)index - 1);
         await unitOfWork.CommitAsync(ct);
 
         await context.Responder.RespondAsync(InteractionResponse.Text($"Removed track at position {index} from the queue."), ct);
