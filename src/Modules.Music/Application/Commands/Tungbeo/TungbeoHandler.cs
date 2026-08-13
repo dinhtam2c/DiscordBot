@@ -40,7 +40,7 @@ internal sealed class TungbeoHandler(
             player.Join(voiceChannelInfo.Id);
         }
 
-        var query = "https://www.youtube.com/watch?v=o0g5cBuUyLE";
+        var query = "https://www.youtube.com/watch?v=BgiWWo5ZHcQ";
         var trackResolver = resolverFactory.Select(query);
 
         var tracks = await trackResolver.ResolveAsync(query, ct)
