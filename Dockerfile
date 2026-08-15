@@ -82,7 +82,7 @@ RUN case "${TARGETARCH}" in \
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS yt-dlp
 
 ARG TARGETARCH
-ARG YTDLP_VERSION=2026.07.04
+ARG YTDLP_VERSION=2026.08.04.234419
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -96,7 +96,7 @@ RUN case "${TARGETARCH}" in \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac && \
     curl -fL \
-        "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_VERSION}/yt-dlp_${YTDLP_ARCH}" \
+        "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/${YTDLP_VERSION}/yt-dlp_${YTDLP_ARCH}" \
         -o /yt-dlp && \
     chmod 755 /yt-dlp
 
@@ -131,10 +131,10 @@ RUN OPUS_PATH="$(ldconfig -p | awk '/libopus\.so\.0/{print $NF; exit}')" && \
 # libdave
 COPY --from=libdave /out/lib/ /usr/local/lib/
 
+RUN ldconfig
+
 # yt-dlp
 COPY --from=yt-dlp /yt-dlp /usr/local/bin/yt-dlp
-
-RUN ldconfig
 
 # Application
 WORKDIR /app

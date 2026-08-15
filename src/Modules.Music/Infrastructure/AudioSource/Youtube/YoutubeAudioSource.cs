@@ -124,10 +124,7 @@ internal sealed class YoutubeAudioSource(
     private static void ConfigureCommonArguments(ProcessStartInfo psi, Track track)
     {
         psi.ArgumentList.Add("--format");
-        psi.ArgumentList.Add("ba/b");
-
-        psi.ArgumentList.Add("--extractor-args");
-        psi.ArgumentList.Add("youtube:player_client=android,ios,web");
+        psi.ArgumentList.Add("bestaudio");
 
         psi.ArgumentList.Add("--quiet");
         psi.ArgumentList.Add("--no-warnings");
