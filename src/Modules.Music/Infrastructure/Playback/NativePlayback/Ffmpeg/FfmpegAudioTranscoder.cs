@@ -89,7 +89,7 @@ internal sealed class FfmpegAudioTranscoder(
         {
             logger.LogDebug("Started ffmpeg process with PID {Pid}", process.Id);
 
-            var stderrTask = DrainStderrAsync(process);
+            var stderrTask = DrainStderrAsync(process, ct);
 
             Task? inputPump = null;
 
@@ -189,16 +189,20 @@ internal sealed class FfmpegAudioTranscoder(
         }
     }
 
-    private async Task DrainStderrAsync(Process process)
+    private async Task DrainStderrAsync(Process process, CancellationToken ct)
     {
         try
         {
-            var stderr = await process.StandardError.ReadToEndAsync();
+            var stderr = await process.StandardError.ReadToEndAsync(ct);
 
             if (!string.IsNullOrWhiteSpace(stderr))
             {
                 logger.LogWarning("ffmpeg PID {Pid} error output: {ErrorOutput}", process.Id, stderr);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogTrace("ffmpeg stderr draining cancelled, PID: {Pid}.", process.Id);
         }
         catch (Exception ex)
         {

@@ -11,7 +11,9 @@ internal sealed class DiscordVoiceSessionManager(DiscordSocketClient client) : I
 
     public IVoiceSession? GetSession(GuildId guildId)
     {
-        return _sessions[guildId];
+        return _sessions.TryGetValue(guildId, out var session)
+            ? session
+            : null;
     }
 
     public async Task<IVoiceSession> JoinAsync(GuildId guildId, ChannelId voiceChannelId, CancellationToken ct)

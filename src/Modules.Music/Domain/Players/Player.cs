@@ -105,6 +105,8 @@ internal sealed class Player : AggregateRoot
     {
         IsPaused = false;
 
+        var hasCurrentTrack = HasCurrentTrack;
+
         if (_queue.Count > 0)
         {
             CurrentQueueItem = _queue.Dequeue();
@@ -114,7 +116,7 @@ internal sealed class Player : AggregateRoot
             CurrentQueueItem = null;
         }
 
-        if (HasCurrentTrack)
+        if (hasCurrentTrack)
         {
             Raise(new TrackSkippedEvent(GuildId));
         }
