@@ -25,8 +25,8 @@ internal sealed class PlaybackCommandQueue
     public void EnqueueStopAndLeave(GuildId guildId)
         => Write(new StopAndLeavePlaybackCommand(guildId));
 
-    internal void EnqueueFinished(GuildId guildId, PlaybackSession session, bool shouldAdvanceQueue)
-        => Write(new PlaybackFinishedCommand(guildId, session, shouldAdvanceQueue));
+    internal void EnqueueFinished(GuildId guildId, IPlaybackInstance playback, bool shouldAdvanceQueue)
+        => Write(new PlaybackFinishedCommand(guildId, playback, shouldAdvanceQueue));
 
     private void Write(PlaybackCommand command)
     {
@@ -45,5 +45,5 @@ internal sealed record StopAndLeavePlaybackCommand(GuildId GuildId) : PlaybackCo
 
 internal sealed record PlaybackFinishedCommand(
     GuildId GuildId,
-    PlaybackSession Session,
+    IPlaybackInstance Playback,
     bool ShouldAdvanceQueue) : PlaybackCommand;

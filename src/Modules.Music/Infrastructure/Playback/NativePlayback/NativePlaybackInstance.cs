@@ -95,6 +95,11 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
                 }
             }
         }
+        catch
+        {
+            _cts.Cancel();
+            throw;
+        }
         finally
         {
             _channel.Writer.TryComplete();
@@ -121,6 +126,11 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+        }
+        catch
+        {
+            _cts.Cancel();
+            throw;
         }
     }
 

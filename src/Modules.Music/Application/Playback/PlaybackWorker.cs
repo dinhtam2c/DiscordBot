@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Application.Abstractions;
 using Application.Discord.Voice;
 using Domain.ValueObjects;
@@ -16,7 +15,7 @@ internal sealed class PlaybackWorker(
     IServiceScopeFactory scopeFactory,
     ILogger<PlaybackWorker> logger)
 {
-    private readonly ConcurrentDictionary<GuildId, PlaybackSession> _sessions = new();
+    private readonly Dictionary<GuildId, IPlaybackInstance> _sessions = new();
 
     public async Task RunAsync(CancellationToken stoppingToken)
     {
@@ -70,46 +69,44 @@ internal sealed class PlaybackWorker(
             return;
         }
 
-        var voiceSession = voiceSessionManager.GetSession(command.GuildId);
-        if (voiceSession is null)
-        {
-            logger.LogError("Cannot start playback for guild {GuildId}: voice session was not found.", command.GuildId);
-            await AdvanceQueueAsync(command.GuildId);
-            return;
-        }
-
-        var session = new PlaybackSession(playbackFactory, voiceSession, command.Track, appLifetime.Stopping);
-        if (!_sessions.TryAdd(command.GuildId, session))
-        {
-            logger.LogWarning("A playback session is already running for guild {GuildId}.", command.GuildId);
-            return;
-        }
-
+        IPlaybackInstance? playback = null;
         try
         {
+            var voiceSession = voiceSessionManager.GetSession(command.GuildId);
+            if (voiceSession is null)
+            {
+                logger.LogError("Cannot start playback for guild {GuildId}: voice session was not found.", command.GuildId);
+                await AdvanceQueueAsync(command.GuildId);
+                return;
+            }
+
             logger.LogInformation(
-                "Starting playback session for guild {GuildId}, Track: {TrackTitle}",
+                "Starting playback for guild {GuildId}, Track: {TrackTitle}",
                 command.GuildId,
                 command.Track.Title);
-            session.Start();
-            _ = ObserveSessionAsync(command.GuildId, session);
+            playback = playbackFactory.Start(command.Track, voiceSession, appLifetime.Stopping);
+            _sessions.Add(command.GuildId, playback);
+            _ = ObservePlaybackAsync(command.GuildId, playback);
         }
         catch (Exception ex)
         {
-            RemoveIfCurrent(command.GuildId, session);
             logger.LogError(ex, "Failed to start playback for guild {GuildId}.", command.GuildId);
-            await DisposeSessionAsync(command.GuildId, session);
+            if (playback is not null)
+            {
+                RemoveIfCurrent(command.GuildId, playback);
+                await DisposePlaybackAsync(command.GuildId, playback);
+            }
             await AdvanceQueueAsync(command.GuildId);
         }
     }
 
-    private async Task ObserveSessionAsync(GuildId guildId, PlaybackSession session)
+    private async Task ObservePlaybackAsync(GuildId guildId, IPlaybackInstance playback)
     {
         var shouldAdvanceQueue = false;
 
         try
         {
-            await session.Completion;
+            await playback.Completion;
             shouldAdvanceQueue = true;
         }
         catch (OperationCanceledException) when (appLifetime.Stopping.IsCancellationRequested)
@@ -127,15 +124,15 @@ internal sealed class PlaybackWorker(
             shouldAdvanceQueue = true;
         }
 
-        commandQueue.EnqueueFinished(guildId, session, shouldAdvanceQueue);
+        commandQueue.EnqueueFinished(guildId, playback, shouldAdvanceQueue);
     }
 
     private async Task HandleFinishedAsync(PlaybackFinishedCommand command)
     {
-        if (!RemoveIfCurrent(command.GuildId, command.Session))
+        if (!RemoveIfCurrent(command.GuildId, command.Playback))
             return;
 
-        await DisposeSessionAsync(command.GuildId, command.Session);
+        await DisposePlaybackAsync(command.GuildId, command.Playback);
 
         if (command.ShouldAdvanceQueue && !appLifetime.Stopping.IsCancellationRequested)
             await AdvanceQueueAsync(command.GuildId);
@@ -143,38 +140,42 @@ internal sealed class PlaybackWorker(
 
     private async Task StopAsync(GuildId guildId)
     {
-        if (!TryRemoveCurrent(guildId, out var session))
+        if (!TryRemoveCurrent(guildId, out var playback))
             return;
 
-        await DisposeSessionAsync(guildId, session);
+        await DisposePlaybackAsync(guildId, playback);
     }
 
     private async Task StopAllAsync()
     {
-        foreach (var (guildId, session) in _sessions.ToArray())
+        foreach (var (guildId, playback) in _sessions.ToArray())
         {
-            if (RemoveIfCurrent(guildId, session))
-                await DisposeSessionAsync(guildId, session);
+            if (RemoveIfCurrent(guildId, playback))
+                await DisposePlaybackAsync(guildId, playback);
         }
     }
 
-    private bool RemoveIfCurrent(GuildId guildId, PlaybackSession session)
-        => ((ICollection<KeyValuePair<GuildId, PlaybackSession>>)_sessions)
-            .Remove(new KeyValuePair<GuildId, PlaybackSession>(guildId, session));
-
-    private bool TryRemoveCurrent(GuildId guildId, out PlaybackSession session)
+    private bool RemoveIfCurrent(GuildId guildId, IPlaybackInstance playback)
     {
-        if (!_sessions.TryGetValue(guildId, out session!))
+        if (!_sessions.TryGetValue(guildId, out var current) || !ReferenceEquals(current, playback))
             return false;
 
-        return RemoveIfCurrent(guildId, session);
+        return _sessions.Remove(guildId);
     }
 
-    private async Task DisposeSessionAsync(GuildId guildId, PlaybackSession session)
+    private bool TryRemoveCurrent(GuildId guildId, out IPlaybackInstance playback)
+    {
+        if (!_sessions.TryGetValue(guildId, out playback!))
+            return false;
+
+        return RemoveIfCurrent(guildId, playback);
+    }
+
+    private async Task DisposePlaybackAsync(GuildId guildId, IPlaybackInstance playback)
     {
         try
         {
-            await session.DisposeAsync();
+            await playback.DisposeAsync();
         }
         catch (Exception ex)
         {
