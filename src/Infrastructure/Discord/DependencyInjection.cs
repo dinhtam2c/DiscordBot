@@ -6,6 +6,7 @@ using Discord.WebSocket;
 using Infrastructure.Discord.DiscordNet;
 using Infrastructure.Discord.DiscordNet.Voice;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Infrastructure.Discord;
 
@@ -39,7 +40,10 @@ public static class DependencyInjection
 
         services.AddSingleton<IDiscordUserService, DiscordUserService>();
 
-        services.AddSingleton<IVoiceSessionManager, DiscordVoiceSessionManager>();
+        services.AddSingleton<DiscordVoiceSessionManager>();
+        services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<DiscordVoiceSessionManager>());
+        services.AddSingleton<IVoiceSessionManager>(sp => sp.GetRequiredService<DiscordVoiceSessionManager>());
+        services.AddSingleton<IVoiceOutputProvider>(sp => sp.GetRequiredService<DiscordVoiceSessionManager>());
 
         return services;
     }

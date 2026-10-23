@@ -3,14 +3,13 @@ using Application.Discord.Voice;
 using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Modules.Music.Domain.Players;
 
 namespace Modules.Music.Application.Playback;
 
 internal sealed class PlaybackWorker(
     PlaybackCommandQueue commandQueue,
     IPlaybackFactory playbackFactory,
-    IVoiceSessionManager voiceSessionManager,
+    IVoiceOutputProvider voiceOutputProvider,
     IAppLifetime appLifetime,
     IServiceScopeFactory scopeFactory,
     ILogger<PlaybackWorker> logger)
@@ -32,10 +31,7 @@ internal sealed class PlaybackWorker(
                             break;
                         case StopPlaybackCommand stop:
                             await StopAsync(stop.GuildId);
-                            break;
-                        case StopAndLeavePlaybackCommand stopAndLeave:
-                            await StopAsync(stopAndLeave.GuildId);
-                            await voiceSessionManager.LeaveAsync(stopAndLeave.GuildId, appLifetime.Stopping);
+                            stop.Completion?.TrySetResult();
                             break;
                         case PlaybackFinishedCommand finished:
                             await HandleFinishedAsync(finished);
@@ -48,6 +44,9 @@ internal sealed class PlaybackWorker(
                 }
                 catch (Exception ex)
                 {
+                    if (command is StopPlaybackCommand { Completion: { } completion })
+                        completion.TrySetException(ex);
+
                     logger.LogError(ex, "Failed to process playback command {CommandType}.", command.GetType().Name);
                 }
             }
@@ -72,19 +71,13 @@ internal sealed class PlaybackWorker(
         IPlaybackInstance? playback = null;
         try
         {
-            var voiceSession = voiceSessionManager.GetSession(command.GuildId);
-            if (voiceSession is null)
-            {
-                logger.LogError("Cannot start playback for guild {GuildId}: voice session was not found.", command.GuildId);
-                await AdvanceQueueAsync(command.GuildId);
-                return;
-            }
+            var voiceOutput = voiceOutputProvider.GetOutput(command.GuildId);
 
             logger.LogInformation(
                 "Starting playback for guild {GuildId}, Track: {TrackTitle}",
                 command.GuildId,
                 command.Track.Title);
-            playback = playbackFactory.Start(command.Track, voiceSession, appLifetime.Stopping);
+            playback = playbackFactory.Start(command.Track, voiceOutput, appLifetime.Stopping);
             _sessions.Add(command.GuildId, playback);
             _ = ObservePlaybackAsync(command.GuildId, playback);
         }

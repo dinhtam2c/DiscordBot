@@ -1,4 +1,4 @@
-﻿using Application.Discord.Voice;
+using Discord;
 using Discord.Audio;
 using Domain.ValueObjects;
 
@@ -7,57 +7,131 @@ namespace Infrastructure.Discord.DiscordNet.Voice;
 internal sealed class DiscordVoiceSession(
     GuildId guildId,
     ChannelId voiceChannelId,
-    IAudioClient audioClient) : IVoiceSession, IDisposable
+    IAudioClient audioClient) : IAsyncDisposable
 {
+    private readonly SemaphoreSlim _streamLock = new(1, 1);
+    private AudioOutStream? _pcmStream;
+    private AudioOutStream? _opusStream;
+    private bool _disposed;
+
     public GuildId GuildId => guildId;
 
     public ChannelId VoiceChannelId => voiceChannelId;
 
-    private AudioOutStream? _pcmStream;
+    public ConnectionState ConnectionState => audioClient.ConnectionState;
 
-    private AudioOutStream? _opusStream;
+    public bool IsConnected => audioClient.ConnectionState == ConnectionState.Connected;
+
+    public event Action? ConnectionChanged;
 
     public async Task WritePcmAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
-        var stream = GetOrCreatePcmStream();
+        await _streamLock.WaitAsync(ct);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _pcmStream ??= audioClient.CreatePCMStream(
+                AudioApplication.Music,
+                bitrate: 128000,
+                bufferMillis: 1000,
+                packetLoss: 5);
 
-        await stream.WriteAsync(data, ct);
+            await _pcmStream.WriteAsync(data, ct);
+        }
+        finally
+        {
+            _streamLock.Release();
+        }
     }
 
     public async Task WriteOpusAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
     {
-        var stream = GetOrCreateOpusStream();
-
-        await stream.WriteAsync(data, ct);
+        await _streamLock.WaitAsync(ct);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _opusStream ??= audioClient.CreateOpusStream(bufferMillis: 3000);
+            await _opusStream.WriteAsync(data, ct);
+        }
+        finally
+        {
+            _streamLock.Release();
+        }
     }
 
     public async Task FlushAsync(CancellationToken ct)
     {
-        if (_pcmStream is not null)
-            await _pcmStream.FlushAsync(ct);
+        await _streamLock.WaitAsync(ct);
+        try
+        {
+            if (_pcmStream is not null)
+                await _pcmStream.FlushAsync(ct);
 
-        if (_opusStream is not null)
-            await _opusStream.FlushAsync(ct);
+            if (_opusStream is not null)
+                await _opusStream.FlushAsync(ct);
+        }
+        finally
+        {
+            _streamLock.Release();
+        }
     }
 
-    private AudioOutStream GetOrCreatePcmStream()
+    public async Task ResetStreamsAsync()
     {
-        return _pcmStream ??= audioClient.CreatePCMStream(
-            AudioApplication.Music,
-            bitrate: 128000,
-            bufferMillis: 1000,
-            packetLoss: 5);
+        await _streamLock.WaitAsync();
+        try
+        {
+            DisposeStreams();
+        }
+        finally
+        {
+            _streamLock.Release();
+        }
     }
 
-    private AudioOutStream GetOrCreateOpusStream()
+    public async ValueTask DisposeAsync()
     {
-        return _opusStream ??= audioClient.CreateOpusStream(bufferMillis: 3000);
+        await _streamLock.WaitAsync();
+        try
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            DisposeStreams();
+            audioClient.Connected -= OnConnectedAsync;
+            audioClient.Disconnected -= OnDisconnectedAsync;
+            audioClient.Dispose();
+        }
+        finally
+        {
+            _streamLock.Release();
+        }
     }
 
-    public void Dispose()
+    public void SubscribeToConnectionEvents()
+    {
+        audioClient.Connected += OnConnectedAsync;
+        audioClient.Disconnected += OnDisconnectedAsync;
+    }
+
+    private Task OnConnectedAsync()
+    {
+        ConnectionChanged?.Invoke();
+        return Task.CompletedTask;
+    }
+
+    private Task OnDisconnectedAsync(Exception _)
+    {
+        ConnectionChanged?.Invoke();
+        return Task.CompletedTask;
+    }
+
+    private void DisposeStreams()
     {
         _pcmStream?.Dispose();
         _opusStream?.Dispose();
-        audioClient.Dispose();
+        _pcmStream = null;
+        _opusStream = null;
     }
 }

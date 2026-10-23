@@ -31,7 +31,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
         IAudioSource source,
         Track track,
         IAudioTranscoder transcoder,
-        IVoiceSession voiceSession,
+        IVoiceOutput voiceOutput,
         CancellationToken externalToken)
     {
         _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
@@ -42,10 +42,10 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
             SingleWriter = true
         });
 
-        _playbackTask = RunAsync(source, track, transcoder, voiceSession);
+        _playbackTask = RunAsync(source, track, transcoder, voiceOutput);
     }
 
-    private async Task RunAsync(IAudioSource source, Track track, IAudioTranscoder transcoder, IVoiceSession voiceSession)
+    private async Task RunAsync(IAudioSource source, Track track, IAudioTranscoder transcoder, IVoiceOutput voiceOutput)
     {
         var ct = _cts.Token;
 
@@ -55,7 +55,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
             await using var pcmStream = await transcoder.OpenPcmStreamAsync(sourceStream, ct);
 
             var producer = ProduceAsync(pcmStream, ct);
-            var consumer = ConsumeAsync(voiceSession, ct);
+            var consumer = ConsumeAsync(voiceOutput, ct);
 
             await Task.WhenAll(producer, consumer);
         }
@@ -107,7 +107,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
         }
     }
 
-    private async Task ConsumeAsync(IVoiceSession voiceSession, CancellationToken ct)
+    private async Task ConsumeAsync(IVoiceOutput voiceOutput, CancellationToken ct)
     {
         try
         {
@@ -115,7 +115,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
             {
                 try
                 {
-                    await voiceSession.WritePcmAsync(chunk.Buffer.AsMemory(0, chunk.Length), ct);
+                    await voiceOutput.WritePcmAsync(chunk.Buffer.AsMemory(0, chunk.Length), ct);
                 }
                 finally
                 {
@@ -123,7 +123,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
                 }
             }
 
-            await voiceSession.FlushAsync(ct);
+            await voiceOutput.FlushAsync(ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

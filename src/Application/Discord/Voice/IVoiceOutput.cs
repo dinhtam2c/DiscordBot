@@ -1,13 +1,7 @@
-﻿using Domain.ValueObjects;
-
 namespace Application.Discord.Voice;
 
-public interface IVoiceSession
+public interface IVoiceOutput
 {
-    GuildId GuildId { get; }
-
-    ChannelId VoiceChannelId { get; }
-
     Task WritePcmAsync(ReadOnlyMemory<byte> data, CancellationToken ct);
 
     Task WriteOpusAsync(ReadOnlyMemory<byte> data, CancellationToken ct);

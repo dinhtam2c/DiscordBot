@@ -18,6 +18,7 @@ using Modules.Music.Application.Commands.Stop;
 using Modules.Music.Application.Commands.Tungbeo;
 using Modules.Music.Application.EventHandler;
 using Modules.Music.Application.Playback;
+using Modules.Music.Application.Voice;
 using Modules.Music.Domain.Players.Events;
 
 namespace Modules.Music.Application;
@@ -28,6 +29,7 @@ internal static class DependencyInjection
     {
         services.AddSingleton<PlaybackCommandQueue>();
         services.AddSingleton<PlaybackWorker>();
+        services.AddSingleton<PlayerVoiceCoordinator>();
         services.AddScoped<PlaybackQueueProgressor>();
 
         services.AddEventHandlers<PlayerJoinedVoiceChannelEvent, PlayerJoinedVoiceChannelHandler>();

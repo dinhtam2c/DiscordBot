@@ -11,11 +11,11 @@ internal sealed class NativePlaybackFactory(
     IAudioTranscoder encoder)
     : IPlaybackFactory
 {
-    public IPlaybackInstance Start(Track track, IVoiceSession voiceSession, CancellationToken ct)
+    public IPlaybackInstance Start(Track track, IVoiceOutput voiceOutput, CancellationToken ct)
     {
         var source = audioSourceResolver.Resolve(track.Source);
         
-        IPlaybackInstance instance = new NativePlaybackInstance(source, track, encoder, voiceSession, ct);
+        IPlaybackInstance instance = new NativePlaybackInstance(source, track, encoder, voiceOutput, ct);
 
         return instance;
     }
