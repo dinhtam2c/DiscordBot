@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Modules.Music.Application.Playback;
+using Modules.Music.Infrastructure.Playback;
 using Modules.Music.Infrastructure.Playback.NativePlayback.Ffmpeg;
 
 namespace Modules.Music.Infrastructure.Playback.NativePlayback;

@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Modules.Music.Application.Playback;
+using Modules.Music.Infrastructure.Playback;
 using System.Diagnostics;
 
 namespace Modules.Music.Infrastructure.Playback.NativePlayback.Ffmpeg;

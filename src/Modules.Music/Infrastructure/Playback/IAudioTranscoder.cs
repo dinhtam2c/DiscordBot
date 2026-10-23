@@ -1,4 +1,4 @@
-﻿namespace Modules.Music.Application.Playback;
+namespace Modules.Music.Infrastructure.Playback;
 
 internal interface IAudioTranscoder
 {

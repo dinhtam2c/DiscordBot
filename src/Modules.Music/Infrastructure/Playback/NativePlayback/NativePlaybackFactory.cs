@@ -2,6 +2,7 @@
 using Modules.Music.Application.AudioSource;
 using Modules.Music.Application.Playback;
 using Modules.Music.Domain.Players;
+using Modules.Music.Infrastructure.Playback;
 
 namespace Modules.Music.Infrastructure.Playback.NativePlayback;
 
