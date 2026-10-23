@@ -1,13 +1,15 @@
-﻿using Application.Event;
+using Application.Event;
 using Modules.Music.Application.Playback;
 using Modules.Music.Domain.Players.Events;
 
 namespace Modules.Music.Application.EventHandler;
 
-internal sealed class TrackSkippedHandler(PlaybackController playbackController) : IEventHandler<TrackSkippedEvent>
+internal sealed class TrackSkippedHandler(PlaybackCommandQueue playbackCommandQueue)
+    : IEventHandler<TrackSkippedEvent>
 {
-    public async Task HandleAsync(TrackSkippedEvent @event, CancellationToken ct)
+    public Task HandleAsync(TrackSkippedEvent @event, CancellationToken ct)
     {
-        await playbackController.StopCurrentAsync(@event.guildId);
+        playbackCommandQueue.EnqueueStop(@event.guildId);
+        return Task.CompletedTask;
     }
 }

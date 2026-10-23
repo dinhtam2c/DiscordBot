@@ -1,17 +1,15 @@
-﻿using Application.Discord.Voice;
 using Application.Event;
 using Modules.Music.Application.Playback;
 using Modules.Music.Domain.Players.Events;
 
 namespace Modules.Music.Application.EventHandler;
 
-internal sealed class PlayerLeftVoiceChannelHandler(
-    IVoiceSessionManager voiceSessionManager,
-    PlaybackController playbackController) : IEventHandler<PlayerLeftVoiceChannelEvent>
+internal sealed class PlayerLeftVoiceChannelHandler(PlaybackCommandQueue playbackCommandQueue)
+    : IEventHandler<PlayerLeftVoiceChannelEvent>
 {
-    public async Task HandleAsync(PlayerLeftVoiceChannelEvent @event, CancellationToken ct)
+    public Task HandleAsync(PlayerLeftVoiceChannelEvent @event, CancellationToken ct)
     {
-        await playbackController.StopAsync(@event.guildId);
-        await voiceSessionManager.LeaveAsync(@event.guildId, ct);
+        playbackCommandQueue.EnqueueStopAndLeave(@event.guildId);
+        return Task.CompletedTask;
     }
 }

@@ -1,13 +1,15 @@
-﻿using Application.Event;
+using Application.Event;
 using Modules.Music.Application.Playback;
 using Modules.Music.Domain.Players.Events;
 
 namespace Modules.Music.Application.EventHandler;
 
-internal sealed class PlaybackStoppedHandler(PlaybackController playbackController) : IEventHandler<PlaybackStoppedEvent>
+internal sealed class PlaybackStoppedHandler(PlaybackCommandQueue playbackCommandQueue)
+    : IEventHandler<PlaybackStoppedEvent>
 {
-    public async Task HandleAsync(PlaybackStoppedEvent @event, CancellationToken ct)
+    public Task HandleAsync(PlaybackStoppedEvent @event, CancellationToken ct)
     {
-        await playbackController.StopAsync(@event.guildId);
+        playbackCommandQueue.EnqueueStop(@event.guildId);
+        return Task.CompletedTask;
     }
 }

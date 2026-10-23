@@ -32,6 +32,9 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddMusicModule(this IServiceCollection services)
     {
+        services.AddSingleton<PlaybackCommandQueue>();
+        services.AddSingleton<PlaybackWorker>();
+
         services.AddTrackResolver();
         services.AddAudioSource();
         services.AddPlayback();
@@ -39,7 +42,6 @@ public static class DependencyInjection
         services.AddSingleton(typeof(InMemoryStore<,>));
         services.AddScoped<IPlayerRepository, MemoryPlayerRepository>();
 
-        services.AddSingleton<PlaybackController>();
         services.AddScoped<PlaybackQueueProgressor>();
 
         services.AddEventHandlers<PlayerJoinedVoiceChannelEvent, PlayerJoinedVoiceChannelHandler>();
