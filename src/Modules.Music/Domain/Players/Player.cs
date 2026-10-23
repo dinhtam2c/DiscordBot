@@ -62,7 +62,7 @@ internal sealed class Player : AggregateRoot
     public void Join(ChannelId voiceChannelId)
     {
         if (voiceChannelId == VoiceChannelId)
-            throw new InvalidOperationException("Player is already connected to this voice channel.");
+            return;
 
         VoiceChannelId = voiceChannelId;
         Raise(new PlayerJoinedVoiceChannelEvent(GuildId, voiceChannelId));

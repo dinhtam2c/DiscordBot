@@ -74,6 +74,25 @@ internal sealed class DiscordVoiceSessionManager(
 
     private async Task RunGuildAsync(GuildVoiceState state, CancellationToken ct)
     {
+        while (!ct.IsCancellationRequested)
+        {
+            await RunGuildCycleAsync(state, ct);
+            if (ct.IsCancellationRequested)
+                return;
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                return;
+            }
+        }
+    }
+
+    private async Task RunGuildCycleAsync(GuildVoiceState state, CancellationToken ct)
+    {
         var retryDelay = TimeSpan.FromSeconds(1);
         var nextAttemptAt = DateTimeOffset.MinValue;
         var observedRevision = -1L;
@@ -108,7 +127,7 @@ internal sealed class DiscordVoiceSessionManager(
                 {
                     if (currentSession.VoiceChannelId != snapshot.DesiredChannelId)
                     {
-                        await DisconnectSessionAsync(state, currentSession);
+                        await DisconnectSessionAsync(state, currentSession, disconnectFromDiscord: false);
                         nextAttemptAt = DateTimeOffset.MinValue;
                         retryDelay = TimeSpan.FromSeconds(1);
                         continue;
@@ -116,7 +135,7 @@ internal sealed class DiscordVoiceSessionManager(
 
                     if (state.IsFaulted(currentSession))
                     {
-                        await DisconnectSessionAsync(state, currentSession);
+                        await DisconnectSessionAsync(state, currentSession, disconnectFromDiscord: false);
                         nextAttemptAt = DateTimeOffset.UtcNow + retryDelay;
                         retryDelay = NextRetryDelay(retryDelay);
                         continue;
@@ -140,7 +159,7 @@ internal sealed class DiscordVoiceSessionManager(
                         continue;
                     }
 
-                    await DisconnectSessionAsync(state, currentSession);
+                    await DisconnectSessionAsync(state, currentSession, disconnectFromDiscord: false);
                     nextAttemptAt = DateTimeOffset.UtcNow + retryDelay;
                     retryDelay = NextRetryDelay(retryDelay);
                     continue;
@@ -233,17 +252,41 @@ internal sealed class DiscordVoiceSessionManager(
         return session;
     }
 
-    private async Task DisconnectSessionAsync(GuildVoiceState state, DiscordVoiceSession session)
+    private async Task DisconnectSessionAsync(
+        GuildVoiceState state,
+        DiscordVoiceSession session,
+        bool disconnectFromDiscord = true)
     {
         await state.Output.SetSessionAsync(null);
         state.SetSession(null);
         state.ClearFault(session);
         session.ConnectionChanged -= state.Signal;
-        await DisconnectUntrackedSessionAsync(session);
+
+        if (disconnectFromDiscord)
+            await DisconnectUntrackedSessionAsync(session);
+        else
+            await session.DisposeAsync(disposeAudioClient: false);
     }
 
     private async Task DisconnectUntrackedSessionAsync(DiscordVoiceSession session)
     {
+        var guild = client.GetGuild(session.GuildId.Value);
+        var voiceChannel = guild?.GetVoiceChannel(session.VoiceChannelId.Value);
+        if (voiceChannel is not null)
+        {
+            try
+            {
+                await voiceChannel.DisconnectAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogDebug(
+                    ex,
+                    "Discord voice disconnect failed for guild {GuildId}.",
+                    session.GuildId);
+            }
+        }
+
         try
         {
             await session.DisposeAsync();
@@ -251,23 +294,6 @@ internal sealed class DiscordVoiceSessionManager(
         catch (Exception ex)
         {
             logger.LogDebug(ex, "Disposing Discord voice client failed for guild {GuildId}.", session.GuildId);
-        }
-
-        var guild = client.GetGuild(session.GuildId.Value);
-        var voiceChannel = guild?.GetVoiceChannel(session.VoiceChannelId.Value);
-        if (voiceChannel is null)
-            return;
-
-        try
-        {
-            await voiceChannel.DisconnectAsync();
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(
-                ex,
-                "Discord voice disconnect failed for guild {GuildId}.",
-                session.GuildId);
         }
     }
 

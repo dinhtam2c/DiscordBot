@@ -31,6 +31,6 @@ internal sealed class JoinHandler(
         player.Join(voiceChannelInfo.Id);
         await unitOfWork.CommitAsync(ct);
 
-        await context.Responder.RespondAsync(InteractionResponse.Text($"Joined **{voiceChannelInfo.Name}**"), ct);
+        await context.Responder.RespondAsync(InteractionResponse.Text($"Joining **{voiceChannelInfo.Name}**"), ct);
     }
 }
