@@ -1,30 +1,6 @@
-﻿using Application;
-using Application.Event;
-using Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
-using Modules.Music.Application.Commands.Clear;
-using Modules.Music.Application.Commands.Join;
-using Modules.Music.Application.Commands.Laviai;
-using Modules.Music.Application.Commands.Leave;
-using Modules.Music.Application.Commands.Loop;
-using Modules.Music.Application.Commands.Move;
-using Modules.Music.Application.Commands.NowPlaying;
-using Modules.Music.Application.Commands.Play;
-using Modules.Music.Application.Commands.PlayNext;
-using Modules.Music.Application.Commands.Queue;
-using Modules.Music.Application.Commands.Remove;
-using Modules.Music.Application.Commands.Shuffle;
-using Modules.Music.Application.Commands.Skip;
-using Modules.Music.Application.Commands.Stop;
-using Modules.Music.Application.Commands.Tungbeo;
-using Modules.Music.Application.EventHandler;
-using Modules.Music.Application.Playback;
-using Modules.Music.Application.Repositories;
-using Modules.Music.Domain.Players.Events;
-using Modules.Music.Infrastructure.AudioSource;
-using Modules.Music.Infrastructure.Playback;
-using Modules.Music.Infrastructure.Repositories;
-using Modules.Music.Infrastructure.TrackResolver;
+using Modules.Music.Application;
+using Modules.Music.Infrastructure;
 
 namespace Modules.Music;
 
@@ -32,41 +8,8 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddMusicModule(this IServiceCollection services)
     {
-        services.AddSingleton<PlaybackCommandQueue>();
-        services.AddSingleton<PlaybackWorker>();
-
-        services.AddTrackResolver();
-        services.AddAudioSource();
-        services.AddPlayback();
-
-        services.AddSingleton(typeof(InMemoryStore<,>));
-        services.AddScoped<IPlayerRepository, MemoryPlayerRepository>();
-
-        services.AddScoped<PlaybackQueueProgressor>();
-
-        services.AddEventHandlers<PlayerJoinedVoiceChannelEvent, PlayerJoinedVoiceChannelHandler>();
-        services.AddEventHandlers<PlayerLeftVoiceChannelEvent, PlayerLeftVoiceChannelHandler>();
-        services.AddEventHandlers<PlaybackStartedEvent, PlaybackStartedHandler>();
-        services.AddEventHandlers<TrackSkippedEvent, TrackSkippedHandler>();
-        services.AddEventHandlers<PlaybackStoppedEvent, PlaybackStoppedHandler>();
-
-        services.AddInteraction<JoinCommand, JoinHandler>();
-        services.AddInteraction<LeaveCommand, LeaveHandler>();
-        services.AddInteraction<PlayCommand, PlayHandler>();
-        services.AddInteraction<PlayNextCommand, PlayNextHandler>();
-        services.AddInteraction<SkipCommand, SkipHandler>();
-        services.AddInteraction<NowPlayingCommand, NowPlayingHandler>();
-        services.AddInteraction<QueueCommand, QueueHandler>();
-        services.AddInteraction<LoopCommand, LoopHandler>();
-        services.AddInteraction<StopCommand, StopHandler>();
-        services.AddInteraction<RemoveCommand, RemoveHandler>();
-        services.AddInteraction<MoveCommand, MoveHandler>();
-        services.AddInteraction<ShuffleCommand, ShuffleHandler>();
-        services.AddInteraction<ClearCommand, ClearHandler>();
-
-        //troll
-        services.AddInteraction<LaviaiCommand, LaviaiHandler>();
-        services.AddInteraction<TungbeoCommand, TungbeoHandler>();
+        services.AddMusicApplication();
+        services.AddMusicInfrastructure();
 
         return services;
     }
