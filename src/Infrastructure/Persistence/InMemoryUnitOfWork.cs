@@ -3,15 +3,18 @@ using Application.Event;
 
 namespace Infrastructure.Persistence;
 
-internal sealed class UnitOfWork(
+internal sealed class InMemoryUnitOfWork(
     MemoryPersistenceContext context,
     IEventPublisher publisher) : IUnitOfWork
 {
     public async Task CommitAsync(CancellationToken ct)
     {
-        foreach (var aggregate in context.Tracker.GetTracked())
+        ct.ThrowIfCancellationRequested();
+
+        var aggregates = context.CommitChanges();
+        foreach (var aggregate in aggregates)
         {
-            foreach (var @event in aggregate.DomainEvents)
+            foreach (var @event in aggregate.DomainEvents.ToArray())
             {
                 await publisher.PublishAsync(@event, ct);
             }

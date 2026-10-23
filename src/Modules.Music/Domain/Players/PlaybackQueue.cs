@@ -59,9 +59,14 @@ internal sealed class PlaybackQueue
         _items.Clear();
     }
 
+    public void CopyFrom(PlaybackQueue other)
+    {
+        _items.Clear();
+        _items.AddRange(other._items);
+    }
+
     public void Shuffle()
     {
         Random.Shared.Shuffle(CollectionsMarshal.AsSpan(_items));
     }
 }
- 

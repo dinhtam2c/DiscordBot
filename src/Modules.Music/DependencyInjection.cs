@@ -1,5 +1,6 @@
 ﻿using Application;
 using Application.Event;
+using Infrastructure.Persistence;
 using Microsoft.Extensions.DependencyInjection;
 using Modules.Music.Application.Commands.Clear;
 using Modules.Music.Application.Commands.Join;
@@ -35,10 +36,11 @@ public static class DependencyInjection
         services.AddAudioSource();
         services.AddPlayback();
 
-        services.AddSingleton<PlayerStore>();
+        services.AddSingleton(typeof(InMemoryStore<,>));
         services.AddScoped<IPlayerRepository, MemoryPlayerRepository>();
 
         services.AddSingleton<PlaybackController>();
+        services.AddScoped<PlaybackQueueProgressor>();
 
         services.AddEventHandlers<PlayerJoinedVoiceChannelEvent, PlayerJoinedVoiceChannelHandler>();
         services.AddEventHandlers<PlayerLeftVoiceChannelEvent, PlayerLeftVoiceChannelHandler>();

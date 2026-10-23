@@ -44,6 +44,21 @@ internal sealed class Player : AggregateRoot
         return new Player(guildId);
     }
 
+    internal Player CreateWorkingCopy()
+    {
+        var copy = new Player(GuildId)
+        {
+            VoiceChannelId = VoiceChannelId,
+            CurrentQueueItem = CurrentQueueItem,
+            Volume = Volume,
+            LoopMode = LoopMode,
+            IsPaused = IsPaused,
+        };
+
+        copy._queue.CopyFrom(_queue);
+        return copy;
+    }
+
     public void Join(ChannelId voiceChannelId)
     {
         if (voiceChannelId == VoiceChannelId)
@@ -72,7 +87,7 @@ internal sealed class Player : AggregateRoot
         else
         {
             CurrentQueueItem = item;
-            Raise(new PlaybackStartedEvent(this));
+            Raise(new PlaybackStartedEvent(GuildId, item.Track));
         }
     }
 
@@ -85,7 +100,7 @@ internal sealed class Player : AggregateRoot
         else
         {
             CurrentQueueItem = item;
-            Raise(new PlaybackStartedEvent(this));
+            Raise(new PlaybackStartedEvent(GuildId, item.Track));
         }
     }
 
@@ -119,6 +134,8 @@ internal sealed class Player : AggregateRoot
         if (hasCurrentTrack)
         {
             Raise(new TrackSkippedEvent(GuildId));
+            if (CurrentTrack is { } nextTrack)
+                Raise(new PlaybackStartedEvent(GuildId, nextTrack));
         }
     }
 
@@ -126,7 +143,10 @@ internal sealed class Player : AggregateRoot
     {
         IsPaused = false;
         if (LoopMode == LoopMode.Track && HasCurrentTrack)
+        {
+            Raise(new PlaybackStartedEvent(GuildId, CurrentTrack!));
             return;
+        }
 
         if (_queue.Count > 0)
         {
@@ -141,6 +161,9 @@ internal sealed class Player : AggregateRoot
         {
             CurrentQueueItem = null;
         }
+
+        if (CurrentTrack is { } nextTrack)
+            Raise(new PlaybackStartedEvent(GuildId, nextTrack));
     }
 
     public void Stop()

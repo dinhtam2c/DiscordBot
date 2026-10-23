@@ -11,12 +11,12 @@ internal sealed class PlaybackStartedHandler(
 {
     public async Task HandleAsync(PlaybackStartedEvent @event, CancellationToken ct)
     {
-        var voiceSession = voiceSessionManager.GetSession(@event.Player.GuildId);
+        var voiceSession = voiceSessionManager.GetSession(@event.GuildId);
         if (voiceSession is null)
         {
             throw new InvalidOperationException("Voice session not found for the specified guild.");
         }
 
-        await playbackController.StartAsync(@event.Player, voiceSession);
+        await playbackController.StartAsync(@event.GuildId, @event.Track, voiceSession);
     }
 }

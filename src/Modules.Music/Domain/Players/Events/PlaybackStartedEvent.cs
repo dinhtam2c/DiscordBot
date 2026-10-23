@@ -1,5 +1,6 @@
-﻿using Domain.Core;
+using Domain.Core;
+using Domain.ValueObjects;
 
 namespace Modules.Music.Domain.Players.Events;
 
-internal record PlaybackStartedEvent(Player Player) : IDomainEvent;
+internal record PlaybackStartedEvent(GuildId GuildId, Track Track) : IDomainEvent;
