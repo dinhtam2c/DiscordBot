@@ -82,7 +82,7 @@ RUN case "${TARGETARCH}" in \
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS yt-dlp
 
 ARG TARGETARCH
-ARG YTDLP_VERSION=2026.08.04.234419
+ARG YTDLP_VERSION=2026.10.21.233146
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
