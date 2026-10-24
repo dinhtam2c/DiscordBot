@@ -17,6 +17,7 @@ using Modules.Music.Application.Commands.Resume;
 using Modules.Music.Application.Commands.Shuffle;
 using Modules.Music.Application.Commands.Skip;
 using Modules.Music.Application.Commands.Stop;
+using Modules.Music.Application.Commands.Volume;
 using Modules.Music.Application.EventHandler;
 using Modules.Music.Application.Playback;
 using Modules.Music.Application.Shortcuts;
@@ -55,6 +56,7 @@ internal static class DependencyInjection
 
         services.AddEventHandlers<PlayerJoinedVoiceChannelEvent, PlayerJoinedVoiceChannelHandler>();
         services.AddEventHandlers<PlayerLeftVoiceChannelEvent, PlayerLeftVoiceChannelHandler>();
+        services.AddEventHandlers<PlayerVolumeChangedEvent, PlayerVolumeChangedHandler>();
         services.AddEventHandlers<PlaybackPausedEvent, PlaybackPausedHandler>();
         services.AddEventHandlers<PlaybackResumedEvent, PlaybackResumedHandler>();
         services.AddEventHandlers<PlaybackStartedEvent, PlaybackStartedHandler>();
@@ -76,6 +78,7 @@ internal static class DependencyInjection
         services.AddInteraction<MoveCommand, MoveHandler>();
         services.AddInteraction<ShuffleCommand, ShuffleHandler>();
         services.AddInteraction<ClearCommand, ClearHandler>();
+        services.AddInteraction<VolumeCommand, VolumeHandler>();
 
         return services;
     }

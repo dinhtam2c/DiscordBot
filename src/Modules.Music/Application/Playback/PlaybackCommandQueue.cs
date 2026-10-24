@@ -16,8 +16,8 @@ internal sealed class PlaybackCommandQueue
 
     internal ChannelReader<PlaybackCommand> Reader => _channel.Reader;
 
-    public void EnqueueStart(GuildId guildId, Track track)
-        => Write(new StartPlaybackCommand(guildId, track));
+    public void EnqueueStart(GuildId guildId, Track track, Volume volume)
+        => Write(new StartPlaybackCommand(guildId, track, volume));
 
     public void EnqueueStop(GuildId guildId)
         => Write(new StopPlaybackCommand(guildId));
@@ -27,6 +27,9 @@ internal sealed class PlaybackCommandQueue
 
     public void EnqueueResume(GuildId guildId)
         => Write(new ResumePlaybackCommand(guildId));
+
+    public void EnqueueSetVolume(GuildId guildId, Volume volume)
+        => Write(new SetPlaybackVolumeCommand(guildId, volume));
 
     public async Task StopAsync(GuildId guildId, CancellationToken ct)
     {
@@ -47,7 +50,7 @@ internal sealed class PlaybackCommandQueue
 
 internal abstract record PlaybackCommand;
 
-internal sealed record StartPlaybackCommand(GuildId GuildId, Track Track) : PlaybackCommand;
+internal sealed record StartPlaybackCommand(GuildId GuildId, Track Track, Volume Volume) : PlaybackCommand;
 
 internal sealed record StopPlaybackCommand(
     GuildId GuildId,
@@ -56,6 +59,8 @@ internal sealed record StopPlaybackCommand(
 internal sealed record PausePlaybackCommand(GuildId GuildId) : PlaybackCommand;
 
 internal sealed record ResumePlaybackCommand(GuildId GuildId) : PlaybackCommand;
+
+internal sealed record SetPlaybackVolumeCommand(GuildId GuildId, Volume Volume) : PlaybackCommand;
 
 internal sealed record PlaybackFinishedCommand(
     GuildId GuildId,

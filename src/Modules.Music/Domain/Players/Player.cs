@@ -87,7 +87,7 @@ internal sealed class Player : AggregateRoot
         else
         {
             CurrentQueueItem = item;
-            Raise(new PlaybackStartedEvent(GuildId, item.Track));
+            RaisePlaybackStarted(item.Track);
         }
     }
 
@@ -100,7 +100,7 @@ internal sealed class Player : AggregateRoot
         else
         {
             CurrentQueueItem = item;
-            Raise(new PlaybackStartedEvent(GuildId, item.Track));
+            RaisePlaybackStarted(item.Track);
         }
     }
 
@@ -143,7 +143,7 @@ internal sealed class Player : AggregateRoot
         {
             Raise(new TrackSkippedEvent(GuildId));
             if (CurrentTrack is { } nextTrack)
-                Raise(new PlaybackStartedEvent(GuildId, nextTrack));
+                RaisePlaybackStarted(nextTrack);
         }
     }
 
@@ -152,7 +152,7 @@ internal sealed class Player : AggregateRoot
         IsPaused = false;
         if (LoopMode == LoopMode.Track && HasCurrentTrack)
         {
-            Raise(new PlaybackStartedEvent(GuildId, CurrentTrack!));
+            RaisePlaybackStarted(CurrentTrack!);
             return;
         }
 
@@ -171,7 +171,7 @@ internal sealed class Player : AggregateRoot
         }
 
         if (CurrentTrack is { } nextTrack)
-            Raise(new PlaybackStartedEvent(GuildId, nextTrack));
+            RaisePlaybackStarted(nextTrack);
     }
 
     public void Stop()
@@ -186,10 +186,18 @@ internal sealed class Player : AggregateRoot
         Raise(new PlaybackStoppedEvent(GuildId));
     }
 
-    public void SetVolume(Volume volume)
+    public bool SetVolume(Volume volume)
     {
+        if (Volume == volume)
+            return false;
+
         Volume = volume;
+        Raise(new PlayerVolumeChangedEvent(GuildId, volume));
+        return true;
     }
+
+    private void RaisePlaybackStarted(Track track)
+        => Raise(new PlaybackStartedEvent(GuildId, track, Volume));
 
     public void SetLoopMode(LoopMode loopMode)
     {

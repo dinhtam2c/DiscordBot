@@ -3,6 +3,7 @@ using Application.Discord.Voice;
 using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Modules.Music.Domain.Players;
 
 namespace Modules.Music.Application.Playback;
 
@@ -38,6 +39,9 @@ internal sealed class PlaybackWorker(
                             break;
                         case ResumePlaybackCommand resume:
                             await ResumeAsync(resume.GuildId);
+                            break;
+                        case SetPlaybackVolumeCommand setVolume:
+                            await SetVolumeAsync(setVolume.GuildId, setVolume.Volume);
                             break;
                         case PlaybackFinishedCommand finished:
                             await HandleFinishedAsync(finished);
@@ -83,7 +87,7 @@ internal sealed class PlaybackWorker(
                 "Starting playback for guild {GuildId}, Track: {TrackTitle}",
                 command.GuildId,
                 command.Track.Title);
-            playback = playbackFactory.Start(command.Track, voiceOutput, appLifetime.Stopping);
+            playback = playbackFactory.Start(command.Track, command.Volume, voiceOutput, appLifetime.Stopping);
             _sessions.Add(command.GuildId, playback);
             _ = ObservePlaybackAsync(command.GuildId, playback);
         }
@@ -155,6 +159,12 @@ internal sealed class PlaybackWorker(
     {
         if (_sessions.TryGetValue(guildId, out var playback))
             await playback.ResumeAsync(appLifetime.Stopping);
+    }
+
+    private async Task SetVolumeAsync(GuildId guildId, Volume volume)
+    {
+        if (_sessions.TryGetValue(guildId, out var playback))
+            await playback.SetVolumeAsync(volume, appLifetime.Stopping);
     }
 
     private async Task StopAllAsync()

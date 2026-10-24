@@ -5,5 +5,5 @@ namespace Modules.Music.Application.Playback;
 
 internal interface IPlaybackFactory
 {
-    IPlaybackInstance Start(Track track, IVoiceOutput voiceOutput, CancellationToken ct);
+    IPlaybackInstance Start(Track track, Volume volume, IVoiceOutput voiceOutput, CancellationToken ct);
 }

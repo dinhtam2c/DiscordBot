@@ -12,6 +12,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
     private readonly CancellationTokenSource _cts;
 
     private readonly Task _playbackTask;
+    private Volume _volume;
     private readonly object _pauseSync = new();
     private TaskCompletionSource _resumeSignal = CreateSignaledSignal();
     private bool _isPaused;
@@ -39,10 +40,12 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
     public NativePlaybackInstance(
         IAudioSource source,
         Track track,
+        Volume volume,
         IAudioTranscoder transcoder,
         IVoiceOutput voiceOutput,
         CancellationToken externalToken)
     {
+        _volume = volume;
         _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
         _channel = Channel.CreateBounded<PcmChunk>(new BoundedChannelOptions(ChannelCapacity)
         {
@@ -78,29 +81,50 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
 
     private async Task ProduceAsync(Stream input, CancellationToken ct)
     {
+        var trailingBytes = new byte[sizeof(int)];
+        var trailingByteCount = 0;
+
         try
         {
             while (!ct.IsCancellationRequested)
             {
-                var buffer = ArrayPool<byte>.Shared.Rent(ChunkSize);
+                byte[]? buffer = ArrayPool<byte>.Shared.Rent(ChunkSize + trailingBytes.Length - 1);
 
                 try
                 {
-                    var read = await input.ReadAsync(buffer.AsMemory(0, ChunkSize), ct);
+                    if (trailingByteCount > 0)
+                        trailingBytes.AsSpan(0, trailingByteCount).CopyTo(buffer);
+
+                    var read = await input.ReadAsync(buffer.AsMemory(trailingByteCount, ChunkSize), ct);
 
                     if (read == 0)
                     {
                         ArrayPool<byte>.Shared.Return(buffer);
+                        buffer = null;
                         break;
                     }
 
-                    await _channel.Writer.WriteAsync(new PcmChunk(buffer, read), ct);
+                    var length = trailingByteCount + read;
+                    var alignedLength = length - length % sizeof(int);
+                    trailingByteCount = length - alignedLength;
+                    if (trailingByteCount > 0)
+                        buffer.AsSpan(alignedLength, trailingByteCount).CopyTo(trailingBytes);
 
-                    buffer = null!;
+                    if (alignedLength == 0)
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        buffer = null;
+                        continue;
+                    }
+
+                    await _channel.Writer.WriteAsync(new PcmChunk(buffer, alignedLength), ct);
+
+                    buffer = null;
                 }
                 catch
                 {
-                    ArrayPool<byte>.Shared.Return(buffer);
+                    if (buffer is not null)
+                        ArrayPool<byte>.Shared.Return(buffer);
                     throw;
                 }
             }
@@ -125,6 +149,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
                 try
                 {
                     await WaitUntilResumedAsync(ct);
+                    ApplyVolume(chunk.Buffer, chunk.Length, Volatile.Read(ref _volume).Value);
                     await voiceOutput.WritePcmAsync(chunk.Buffer.AsMemory(0, chunk.Length), ct);
                 }
                 finally
@@ -193,7 +218,9 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
 
     public Task SetVolumeAsync(Volume volume, CancellationToken ct)
     {
-        throw new NotImplementedException();
+        ct.ThrowIfCancellationRequested();
+        Volatile.Write(ref _volume, volume);
+        return Task.CompletedTask;
     }
 
     private async Task StopAsync()
@@ -229,5 +256,20 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
         var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         signal.SetResult();
         return signal;
+    }
+
+    private static void ApplyVolume(byte[] pcm, int length, int volume)
+    {
+        if (volume == 100)
+            return;
+
+        var gain = volume / 100f;
+        for (var offset = 0; offset + sizeof(short) <= length; offset += sizeof(short))
+        {
+            var sample = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(pcm.AsSpan(offset, sizeof(short)));
+            var scaled = (int)MathF.Round(sample * gain);
+            var clipped = (short)Math.Clamp(scaled, short.MinValue, short.MaxValue);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(pcm.AsSpan(offset, sizeof(short)), clipped);
+        }
     }
 }

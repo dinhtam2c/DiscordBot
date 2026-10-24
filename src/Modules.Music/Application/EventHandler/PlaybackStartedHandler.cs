@@ -9,7 +9,7 @@ internal sealed class PlaybackStartedHandler(PlaybackCommandQueue playbackComman
 {
     public Task HandleAsync(PlaybackStartedEvent @event, CancellationToken ct)
     {
-        playbackCommandQueue.EnqueueStart(@event.GuildId, @event.Track);
+        playbackCommandQueue.EnqueueStart(@event.GuildId, @event.Track, @event.Volume);
         return Task.CompletedTask;
     }
 }
