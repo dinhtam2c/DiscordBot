@@ -1,19 +1,27 @@
-﻿using Microsoft.Extensions.Logging;
+﻿using System.Text.Json;
+using System.Web;
 using Microsoft.Extensions.Options;
 using Modules.Music.Application.TrackResolver;
 using Modules.Music.Domain.Players;
-using Modules.Music.Infrastructure.AudioSource.Youtube;
-using System.Diagnostics;
-using System.Text.Json;
-using System.Web;
+using Modules.Music.Infrastructure.Processes.YtDlp;
 
-namespace Modules.Music.Infrastructure.TrackResolver;
+namespace Modules.Music.Infrastructure.TrackResolver.Youtube;
 
 internal sealed class YoutubeTrackResolver(
-    IOptions<YoutubeOptions> options,
-    ILogger<YoutubeTrackResolver> logger) : ITrackResolver
+    IOptions<TrackSearchOptions> options,
+    YtDlpJsonRunner ytDlpRunner) : ITrackResolver
 {
     public TrackSource Source { get; } = TrackSource.Youtube;
+
+    public bool CanResolveUrl(Uri uri)
+    {
+        var host = uri.IdnHost;
+        return host.Equals("youtu.be", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("youtube-nocookie.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".youtube-nocookie.com", StringComparison.OrdinalIgnoreCase);
+    }
 
     public async Task<IReadOnlyList<Track>> ResolveAsync(string query, CancellationToken ct = default)
     {
@@ -81,44 +89,19 @@ internal sealed class YoutubeTrackResolver(
 
     private async Task<IReadOnlyList<Track>> ExecuteAsync(string input, bool noPlaylist, CancellationToken ct, bool flatPlaylist = false)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = options.Value.YtDlpPath,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-
-        psi.ArgumentList.Add("--dump-single-json");
+        var arguments = new List<string> { "--dump-single-json" };
 
         if (noPlaylist)
-            psi.ArgumentList.Add("--no-playlist");
+            arguments.Add("--no-playlist");
 
         if (flatPlaylist)
-            psi.ArgumentList.Add("--flat-playlist");
+            arguments.Add("--flat-playlist");
 
-        psi.ArgumentList.Add("--extractor-args");
-        psi.ArgumentList.Add("youtube:player_client=android,ios,web");
+        arguments.Add("--extractor-args");
+        arguments.Add("youtube:player_client=android,ios,web");
+        arguments.Add(input);
 
-        psi.ArgumentList.Add(input);
-
-        using var process = Process.Start(psi)
-            ?? throw new InvalidOperationException("Failed to start yt-dlp.");
-
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
-        var stderrTask = process.StandardError.ReadToEndAsync(ct);
-
-        await process.WaitForExitAsync(ct);
-
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
-
-        if (process.ExitCode != 0)
-        {
-            logger.LogError("yt-dlp stderr: {stderr}", stderr);
-            throw new InvalidOperationException($"yt-dlp exited with code {process.ExitCode}");
-        }
-
+        var stdout = await ytDlpRunner.RunAsync(arguments, ct);
         return ParseTracks(stdout);
     }
 

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Modules.Music.Application.Repositories;
 using Modules.Music.Infrastructure.AudioSource;
 using Modules.Music.Infrastructure.Playback;
+using Modules.Music.Infrastructure.Processes.YtDlp;
 using Modules.Music.Infrastructure.Repositories;
 using Modules.Music.Infrastructure.TrackResolver;
 
@@ -13,6 +14,7 @@ internal static class DependencyInjection
     internal static IServiceCollection AddMusicInfrastructure(this IServiceCollection services)
     {
         services.AddTrackResolver();
+        services.AddYtDlp();
         services.AddAudioSource();
         services.AddPlayback();
 

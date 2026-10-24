@@ -9,6 +9,15 @@ internal sealed class TrackResolverFactory(IEnumerable<ITrackResolver> resolvers
 
     public ITrackResolver Select(string query)
     {
+        if (Uri.TryCreate(query.Trim(), UriKind.Absolute, out var uri))
+        {
+            foreach (var resolver in _resolvers.Values)
+            {
+                if (resolver.CanResolveUrl(uri))
+                    return resolver;
+            }
+        }
+
         return _resolvers[TrackSource.Youtube];
     }
 }

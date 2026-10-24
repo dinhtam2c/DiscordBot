@@ -18,6 +18,7 @@ using Modules.Music.Application.Commands.Stop;
 using Modules.Music.Application.EventHandler;
 using Modules.Music.Application.Playback;
 using Modules.Music.Application.Shortcuts;
+using Modules.Music.Application.TrackResolver;
 using Modules.Music.Application.Voice;
 using Modules.Music.Application.UseCases.EnqueueTracks;
 using Modules.Music.Domain.Players.Events;
@@ -33,6 +34,10 @@ internal static class DependencyInjection
         services.AddSingleton<PlayerVoiceCoordinator>();
         services.AddScoped<EnqueueTracksUseCase>();
         services.AddScoped<PlaybackQueueProgressor>();
+        services.AddOptions<TrackSearchOptions>()
+            .BindConfiguration(TrackSearchOptions.SectionName)
+            .Validate(options => options.SearchResultCount > 0, "Track search result count must be positive.")
+            .ValidateOnStart();
         services.AddOptions<MusicShortcutOptions>()
             .BindConfiguration(MusicShortcutOptions.SectionName)
             .Validate(options => options.Shortcuts is not null && options.Shortcuts.All(entry =>

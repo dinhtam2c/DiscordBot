@@ -1,22 +1,23 @@
-﻿using Microsoft.Extensions.Logging;
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Modules.Music.Application.AudioSource;
 using Modules.Music.Domain.Players;
-using System.Diagnostics;
+using Modules.Music.Infrastructure.Processes.YtDlp;
 
-namespace Modules.Music.Infrastructure.AudioSource.Youtube;
+namespace Modules.Music.Infrastructure.AudioSource;
 
-internal sealed class YoutubeAudioSource(
-    IOptions<YoutubeOptions> options,
-    ILogger<YoutubeAudioSource> logger) : IAudioSource
+internal abstract class YtDlpAudioSourceBase(
+    IOptions<YtDlpOptions> options,
+    ILogger<YtDlpAudioSourceBase> logger) : IAudioSource
 {
-    public TrackSource Source => TrackSource.Youtube;
+    public abstract TrackSource Source { get; }
 
     public async Task<string> GetUrlAsync(Track track, CancellationToken ct)
     {
         var psi = CreateProcessStartInfo();
-
-        ConfigureUrlExtraction(psi, track);
+        psi.ArgumentList.Add("--get-url");
+        ConfigureCommonArguments(psi, track);
 
         var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start yt-dlp.");
@@ -26,7 +27,6 @@ internal sealed class YoutubeAudioSource(
         try
         {
             logger.LogDebug("Started yt-dlp process with PID {Pid} for URL extraction.", process.Id);
-
             stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
             stderrTask = process.StandardError.ReadToEndAsync(ct);
 
@@ -34,32 +34,17 @@ internal sealed class YoutubeAudioSource(
 
             var url = (await stdoutTask).Trim();
             var stderr = await stderrTask;
-
             if (!string.IsNullOrWhiteSpace(stderr))
-            {
                 logger.LogDebug("yt-dlp stderr: {ErrorOutput}", stderr);
-            }
 
             if (process.ExitCode != 0)
-            {
                 throw new InvalidOperationException($"yt-dlp exited with code {process.ExitCode}.");
-            }
 
             if (string.IsNullOrWhiteSpace(url))
-            {
                 throw new InvalidOperationException("yt-dlp returned an empty media URL.");
-            }
 
             logger.LogDebug("yt-dlp successfully extracted media URL.");
-
             return url;
-        }
-        catch (OperationCanceledException)
-        {
-            logger.LogTrace("yt-dlp URL extraction cancelled.");
-
-            await StopProcessAsync(process, stdoutTask, stderrTask);
-            throw;
         }
         catch
         {
@@ -77,19 +62,23 @@ internal sealed class YoutubeAudioSource(
         ct.ThrowIfCancellationRequested();
 
         var psi = CreateProcessStartInfo();
-
-        ConfigureStreamDownload(psi, track);
+        psi.ArgumentList.Add("--output");
+        psi.ArgumentList.Add("-");
+        psi.ArgumentList.Add("--retries");
+        psi.ArgumentList.Add("infinite");
+        psi.ArgumentList.Add("--fragment-retries");
+        psi.ArgumentList.Add("infinite");
+        psi.ArgumentList.Add("--retry-sleep");
+        psi.ArgumentList.Add("5");
+        ConfigureCommonArguments(psi, track);
 
         var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start yt-dlp.");
 
         try
         {
-            logger.LogDebug("Started yt-dlp process with PID {Pid}.", process.Id);
-
-            Stream stream = new YtDlpStream(process, logger);
-
-            return stream;
+            logger.LogDebug("Started yt-dlp process with PID {Pid} for {Source}.", process.Id, Source);
+            return new YtDlpStream(process, logger);
         }
         catch
         {
@@ -107,38 +96,12 @@ internal sealed class YoutubeAudioSource(
         }
     }
 
-    private static void ConfigureUrlExtraction(ProcessStartInfo psi, Track track)
-    {
-        psi.ArgumentList.Add("--get-url");
-
-        ConfigureCommonArguments(psi, track);
-    }
-
-    private static void ConfigureStreamDownload(ProcessStartInfo psi, Track track)
-    {
-        psi.ArgumentList.Add("--output");
-        psi.ArgumentList.Add("-");
-
-        psi.ArgumentList.Add("--retries");
-        psi.ArgumentList.Add("infinite");
-
-        psi.ArgumentList.Add("--fragment-retries");
-        psi.ArgumentList.Add("infinite");
-
-        psi.ArgumentList.Add("--retry-sleep");
-        psi.ArgumentList.Add("5");
-
-        ConfigureCommonArguments(psi, track);
-    }
-
     private static void ConfigureCommonArguments(ProcessStartInfo psi, Track track)
     {
         psi.ArgumentList.Add("--format");
         psi.ArgumentList.Add("bestaudio");
-
         psi.ArgumentList.Add("--quiet");
         psi.ArgumentList.Add("--no-warnings");
-
         psi.ArgumentList.Add(track.SourceUrl);
     }
 
@@ -146,11 +109,11 @@ internal sealed class YoutubeAudioSource(
     {
         return new ProcessStartInfo
         {
-            FileName = options.Value.YtDlpPath,
+            FileName = options.Value.ExecutablePath,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
-            CreateNoWindow = true
+            CreateNoWindow = true,
         };
     }
 
@@ -159,11 +122,11 @@ internal sealed class YoutubeAudioSource(
         try
         {
             if (!process.HasExited)
-                process.Kill(true);
+                process.Kill(entireProcessTree: true);
         }
         catch
         {
-            // Ignore cleanup failure.
+            // Continue cleanup even if the process has already exited or cannot be killed.
         }
     }
 

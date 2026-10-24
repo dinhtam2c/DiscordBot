@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace Modules.Music.Infrastructure.TrackResolver;
+namespace Modules.Music.Infrastructure.TrackResolver.Youtube;
 
 internal sealed class YoutubeMetadata
 {
