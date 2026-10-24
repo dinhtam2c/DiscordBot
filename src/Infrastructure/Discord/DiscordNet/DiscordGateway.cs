@@ -1,4 +1,5 @@
 ﻿using Application.Discord.Runtime;
+using Application.Abstractions;
 using Discord;
 using Discord.LibDave;
 using Discord.LibDave.Binding;
@@ -10,6 +11,7 @@ namespace Infrastructure.Discord.DiscordNet;
 
 internal sealed class DiscordGateway(
     IOptions<DiscordOptions> options,
+    IAppLifetime appLifetime,
     DiscordSocketClient client,
     IEnumerable<IDiscordEventSubscriber> subscribers,
     IEnumerable<IDiscordReadyHandler> readyHandlers,
@@ -40,7 +42,18 @@ internal sealed class DiscordGateway(
     {
         foreach (var handler in readyHandlers)
         {
-            _ = Task.Run(() => handler.OnReadyAsync(CancellationToken.None));
+            try
+            {
+                await handler.OnReadyAsync(appLifetime.Stopping);
+            }
+            catch (OperationCanceledException) when (appLifetime.Stopping.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Discord ready handler {HandlerType} failed.", handler.GetType().Name);
+            }
         }
     }
 

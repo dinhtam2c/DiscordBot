@@ -1,4 +1,4 @@
-﻿using Application.Discord.Interactions.Context;
+using Application.Discord.Interactions.Context;
 using Application.Discord.Interactions.Handler;
 using Application.Discord.Interactions.Response;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,31 +15,27 @@ public sealed class InteractionDispatcher(
     public async Task DispatchAsync(InteractionContext context, CancellationToken ct)
     {
         logger.LogDebug("Received interaction for command: /{CommandName}", context.CommandName);
+        var stopwatch = Stopwatch.StartNew();
 
-        var handlerType = resolver.Resolve(context.CommandName);
-
-        if (handlerType is null)
-        {
-            logger.LogWarning("No handler found for command: /{CommandName}", context.CommandName);
-            await context.Responder.RespondAsync(
-                InteractionResponse.Text($"Unknown command: /{context.CommandName}"),
-                ct);
-            return;
-        }
-        
-        var handler = (IInteractionHandler)serviceProvider.GetRequiredService(handlerType);
-
-        Stopwatch stopwatch = Stopwatch.StartNew();
         try
         {
             await context.Responder.DeferAsync(ct);
+
+            if (!resolver.TryResolve(context.CommandName, out var handlerType))
+            {
+                logger.LogWarning("No handler found for command: /{CommandName}", context.CommandName);
+                await context.Responder.RespondAsync(
+                    InteractionResponse.Text($"The command /{context.CommandName} is no longer available."),
+                    ct);
+                return;
+            }
+
+            var handler = (IInteractionHandler)serviceProvider.GetRequiredService(handlerType!);
             await handler.HandleAsync(context, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            logger.LogDebug(
-                "Interaction cancelled for command: /{CommandName}",
-                context.CommandName);
+            logger.LogDebug("Interaction cancelled for command: /{CommandName}", context.CommandName);
         }
         catch (UserFriendlyException ex)
         {
@@ -47,14 +43,11 @@ public sealed class InteractionDispatcher(
                 ex,
                 "User-friendly error occurred while handling interaction for command: /{CommandName}",
                 context.CommandName);
-
-
             await context.Responder.RespondAsync(InteractionResponse.Text(ex.Message), ct);
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error occurred while handling interaction for command: /{CommandName}", context.CommandName);
-
             await context.Responder.RespondAsync(InteractionResponse.Text("An unexpected error occurred."), ct);
         }
         finally

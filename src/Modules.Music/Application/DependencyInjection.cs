@@ -1,9 +1,9 @@
 using Application;
+using Application.Discord.Interactions.Command;
 using Application.Event;
 using Microsoft.Extensions.DependencyInjection;
 using Modules.Music.Application.Commands.Clear;
 using Modules.Music.Application.Commands.Join;
-using Modules.Music.Application.Commands.Laviai;
 using Modules.Music.Application.Commands.Leave;
 using Modules.Music.Application.Commands.Loop;
 using Modules.Music.Application.Commands.Move;
@@ -15,10 +15,11 @@ using Modules.Music.Application.Commands.Remove;
 using Modules.Music.Application.Commands.Shuffle;
 using Modules.Music.Application.Commands.Skip;
 using Modules.Music.Application.Commands.Stop;
-using Modules.Music.Application.Commands.Tungbeo;
 using Modules.Music.Application.EventHandler;
 using Modules.Music.Application.Playback;
+using Modules.Music.Application.Shortcuts;
 using Modules.Music.Application.Voice;
+using Modules.Music.Application.UseCases.EnqueueTracks;
 using Modules.Music.Domain.Players.Events;
 
 namespace Modules.Music.Application;
@@ -32,6 +33,18 @@ internal static class DependencyInjection
         services.AddSingleton<PlayerVoiceCoordinator>();
         services.AddScoped<EnqueueTracksUseCase>();
         services.AddScoped<PlaybackQueueProgressor>();
+        services.AddOptions<MusicShortcutOptions>()
+            .BindConfiguration(MusicShortcutOptions.SectionName)
+            .Validate(options => options.Shortcuts is not null && options.Shortcuts.All(entry =>
+                    entry.Value is not null
+                    && !string.IsNullOrWhiteSpace(entry.Value.Description)
+                    && !string.IsNullOrWhiteSpace(entry.Value.Query)
+                    && Enum.IsDefined(entry.Value.Mode)),
+                "Every music shortcut needs a description, query, and valid mode.")
+            .ValidateOnStart();
+        services.AddSingleton<MusicShortcutCatalog>();
+        services.AddSingleton<IInteractionCommandSource>(sp => sp.GetRequiredService<MusicShortcutCatalog>());
+        services.AddScoped<ShortcutInteractionHandler>();
 
         services.AddEventHandlers<PlayerJoinedVoiceChannelEvent, PlayerJoinedVoiceChannelHandler>();
         services.AddEventHandlers<PlayerLeftVoiceChannelEvent, PlayerLeftVoiceChannelHandler>();
@@ -52,10 +65,6 @@ internal static class DependencyInjection
         services.AddInteraction<MoveCommand, MoveHandler>();
         services.AddInteraction<ShuffleCommand, ShuffleHandler>();
         services.AddInteraction<ClearCommand, ClearHandler>();
-
-        // troll
-        services.AddInteraction<LaviaiCommand, LaviaiHandler>();
-        services.AddInteraction<TungbeoCommand, TungbeoHandler>();
 
         return services;
     }
