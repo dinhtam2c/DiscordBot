@@ -1,10 +1,9 @@
-﻿using Application.Discord.Voice;
+﻿using System.Buffers;
+using System.Threading.Channels;
+using Application.Discord.Voice;
 using Modules.Music.Application.AudioSource;
 using Modules.Music.Application.Playback;
 using Modules.Music.Domain.Players;
-using Modules.Music.Infrastructure.Playback;
-using System.Buffers;
-using System.Threading.Channels;
 
 namespace Modules.Music.Infrastructure.Playback.NativePlayback;
 
@@ -13,6 +12,9 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
     private readonly CancellationTokenSource _cts;
 
     private readonly Task _playbackTask;
+    private readonly object _pauseSync = new();
+    private TaskCompletionSource _resumeSignal = CreateSignaledSignal();
+    private bool _isPaused;
 
     private const int ChunkSize = 3840 * 10; // 200 ms
     private const int ChannelCapacity = 10;  // ~2 seconds
@@ -23,9 +25,16 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
 
     public Task Completion => _playbackTask;
 
-    public bool IsPlaying => !_playbackTask.IsCompleted;
+    public bool IsPlaying => !_playbackTask.IsCompleted && !IsPaused;
 
-    public bool IsPaused => false;
+    public bool IsPaused
+    {
+        get
+        {
+            lock (_pauseSync)
+                return _isPaused;
+        }
+    }
 
     public NativePlaybackInstance(
         IAudioSource source,
@@ -115,6 +124,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
             {
                 try
                 {
+                    await WaitUntilResumedAsync(ct);
                     await voiceOutput.WritePcmAsync(chunk.Buffer.AsMemory(0, chunk.Length), ct);
                 }
                 finally
@@ -123,6 +133,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
                 }
             }
 
+            await WaitUntilResumedAsync(ct);
             await voiceOutput.FlushAsync(ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -145,12 +156,34 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
 
     public Task PauseAsync(CancellationToken ct)
     {
-        throw new NotImplementedException();
+        ct.ThrowIfCancellationRequested();
+
+        lock (_pauseSync)
+        {
+            if (_playbackTask.IsCompleted || _isPaused)
+                return Task.CompletedTask;
+
+            _isPaused = true;
+            _resumeSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+
+        return Task.CompletedTask;
     }
 
     public Task ResumeAsync(CancellationToken ct)
     {
-        throw new NotImplementedException();
+        ct.ThrowIfCancellationRequested();
+
+        lock (_pauseSync)
+        {
+            if (!_isPaused)
+                return Task.CompletedTask;
+
+            _isPaused = false;
+            _resumeSignal.TrySetResult();
+        }
+
+        return Task.CompletedTask;
     }
 
     public Task SeekAsync(TimeSpan position, CancellationToken ct)
@@ -180,5 +213,21 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance, IAsyncDisposab
     {
         await StopAsync();
         _cts.Dispose();
+    }
+
+    private Task WaitUntilResumedAsync(CancellationToken ct)
+    {
+        Task resumeTask;
+        lock (_pauseSync)
+            resumeTask = _isPaused ? _resumeSignal.Task : Task.CompletedTask;
+
+        return resumeTask.WaitAsync(ct);
+    }
+
+    private static TaskCompletionSource CreateSignaledSignal()
+    {
+        var signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        signal.SetResult();
+        return signal;
     }
 }

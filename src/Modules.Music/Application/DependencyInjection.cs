@@ -8,10 +8,12 @@ using Modules.Music.Application.Commands.Leave;
 using Modules.Music.Application.Commands.Loop;
 using Modules.Music.Application.Commands.Move;
 using Modules.Music.Application.Commands.NowPlaying;
+using Modules.Music.Application.Commands.Pause;
 using Modules.Music.Application.Commands.Play;
 using Modules.Music.Application.Commands.PlayNext;
 using Modules.Music.Application.Commands.Queue;
 using Modules.Music.Application.Commands.Remove;
+using Modules.Music.Application.Commands.Resume;
 using Modules.Music.Application.Commands.Shuffle;
 using Modules.Music.Application.Commands.Skip;
 using Modules.Music.Application.Commands.Stop;
@@ -53,6 +55,8 @@ internal static class DependencyInjection
 
         services.AddEventHandlers<PlayerJoinedVoiceChannelEvent, PlayerJoinedVoiceChannelHandler>();
         services.AddEventHandlers<PlayerLeftVoiceChannelEvent, PlayerLeftVoiceChannelHandler>();
+        services.AddEventHandlers<PlaybackPausedEvent, PlaybackPausedHandler>();
+        services.AddEventHandlers<PlaybackResumedEvent, PlaybackResumedHandler>();
         services.AddEventHandlers<PlaybackStartedEvent, PlaybackStartedHandler>();
         services.AddEventHandlers<TrackSkippedEvent, TrackSkippedHandler>();
         services.AddEventHandlers<PlaybackStoppedEvent, PlaybackStoppedHandler>();
@@ -61,6 +65,8 @@ internal static class DependencyInjection
         services.AddInteraction<LeaveCommand, LeaveHandler>();
         services.AddInteraction<PlayCommand, PlayHandler>();
         services.AddInteraction<PlayNextCommand, PlayNextHandler>();
+        services.AddInteraction<PauseCommand, PauseHandler>();
+        services.AddInteraction<ResumeCommand, ResumeHandler>();
         services.AddInteraction<SkipCommand, SkipHandler>();
         services.AddInteraction<NowPlayingCommand, NowPlayingHandler>();
         services.AddInteraction<QueueCommand, QueueHandler>();

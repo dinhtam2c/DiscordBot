@@ -104,16 +104,24 @@ internal sealed class Player : AggregateRoot
         }
     }
 
-    public void Pause()
+    public bool Pause()
     {
-        if (HasCurrentTrack)
-            IsPaused = true;
+        if (!HasCurrentTrack || IsPaused)
+            return false;
+
+        IsPaused = true;
+        Raise(new PlaybackPausedEvent(GuildId));
+        return true;
     }
 
-    public void Resume()
+    public bool Resume()
     {
-        if (HasCurrentTrack)
-            IsPaused = false;
+        if (!HasCurrentTrack || !IsPaused)
+            return false;
+
+        IsPaused = false;
+        Raise(new PlaybackResumedEvent(GuildId));
+        return true;
     }
 
     public void Skip()

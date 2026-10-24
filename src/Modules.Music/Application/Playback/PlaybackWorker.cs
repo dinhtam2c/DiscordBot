@@ -33,6 +33,12 @@ internal sealed class PlaybackWorker(
                             await StopAsync(stop.GuildId);
                             stop.Completion?.TrySetResult();
                             break;
+                        case PausePlaybackCommand pause:
+                            await PauseAsync(pause.GuildId);
+                            break;
+                        case ResumePlaybackCommand resume:
+                            await ResumeAsync(resume.GuildId);
+                            break;
                         case PlaybackFinishedCommand finished:
                             await HandleFinishedAsync(finished);
                             break;
@@ -137,6 +143,18 @@ internal sealed class PlaybackWorker(
             return;
 
         await DisposePlaybackAsync(guildId, playback);
+    }
+
+    private async Task PauseAsync(GuildId guildId)
+    {
+        if (_sessions.TryGetValue(guildId, out var playback))
+            await playback.PauseAsync(appLifetime.Stopping);
+    }
+
+    private async Task ResumeAsync(GuildId guildId)
+    {
+        if (_sessions.TryGetValue(guildId, out var playback))
+            await playback.ResumeAsync(appLifetime.Stopping);
     }
 
     private async Task StopAllAsync()

@@ -22,6 +22,12 @@ internal sealed class PlaybackCommandQueue
     public void EnqueueStop(GuildId guildId)
         => Write(new StopPlaybackCommand(guildId));
 
+    public void EnqueuePause(GuildId guildId)
+        => Write(new PausePlaybackCommand(guildId));
+
+    public void EnqueueResume(GuildId guildId)
+        => Write(new ResumePlaybackCommand(guildId));
+
     public async Task StopAsync(GuildId guildId, CancellationToken ct)
     {
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -46,6 +52,10 @@ internal sealed record StartPlaybackCommand(GuildId GuildId, Track Track) : Play
 internal sealed record StopPlaybackCommand(
     GuildId GuildId,
     TaskCompletionSource? Completion = null) : PlaybackCommand;
+
+internal sealed record PausePlaybackCommand(GuildId GuildId) : PlaybackCommand;
+
+internal sealed record ResumePlaybackCommand(GuildId GuildId) : PlaybackCommand;
 
 internal sealed record PlaybackFinishedCommand(
     GuildId GuildId,
