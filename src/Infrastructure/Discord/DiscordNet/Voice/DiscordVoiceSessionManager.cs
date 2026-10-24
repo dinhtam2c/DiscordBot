@@ -19,9 +19,9 @@ internal sealed class DiscordVoiceSessionManager(
     private readonly ConcurrentDictionary<GuildId, GuildVoiceState> _states = new();
     private readonly CancellationTokenSource _stopping = new();
 
-    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    public Task StartAsync(CancellationToken ct) => Task.CompletedTask;
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public async Task StopAsync(CancellationToken ct)
     {
         _stopping.Cancel();
         var workers = _states.Values
@@ -32,9 +32,9 @@ internal sealed class DiscordVoiceSessionManager(
 
         try
         {
-            await Task.WhenAll(workers).WaitAsync(cancellationToken);
+            await Task.WhenAll(workers).WaitAsync(ct);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
         }
     }

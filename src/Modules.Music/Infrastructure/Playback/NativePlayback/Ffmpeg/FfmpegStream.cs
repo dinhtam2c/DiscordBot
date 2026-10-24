@@ -31,9 +31,9 @@ internal sealed class FfmpegStream(
         return _output.Read(buffer, offset, count);
     }
 
-    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
     {
-        return _output.ReadAsync(buffer, cancellationToken);
+        return _output.ReadAsync(buffer, ct);
     }
 
     public override long Seek(long offset, SeekOrigin origin)

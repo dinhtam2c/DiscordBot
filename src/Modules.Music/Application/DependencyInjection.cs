@@ -30,6 +30,7 @@ internal static class DependencyInjection
         services.AddSingleton<PlaybackCommandQueue>();
         services.AddSingleton<PlaybackWorker>();
         services.AddSingleton<PlayerVoiceCoordinator>();
+        services.AddScoped<EnqueueTracksUseCase>();
         services.AddScoped<PlaybackQueueProgressor>();
 
         services.AddEventHandlers<PlayerJoinedVoiceChannelEvent, PlayerJoinedVoiceChannelHandler>();

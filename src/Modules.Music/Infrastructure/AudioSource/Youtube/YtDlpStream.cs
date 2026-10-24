@@ -30,14 +30,14 @@ internal class YtDlpStream(
         return _output.Read(buffer, offset, count);
     }
 
-    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
     {
-        return _output.ReadAsync(buffer, cancellationToken);
+        return _output.ReadAsync(buffer, ct);
     }
 
-    public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken cancellationToken)
+    public override Task CopyToAsync(Stream destination, int bufferSize, CancellationToken ct)
     {
-        return _output.CopyToAsync(destination, bufferSize, cancellationToken);
+        return _output.CopyToAsync(destination, bufferSize, ct);
     }
 
     public override long Seek(long offset, SeekOrigin origin)
