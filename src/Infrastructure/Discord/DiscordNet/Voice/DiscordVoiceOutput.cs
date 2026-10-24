@@ -4,29 +4,29 @@ namespace Infrastructure.Discord.DiscordNet.Voice;
 
 internal sealed class DiscordVoiceOutput(Action<DiscordVoiceSession> onWriteFailure) : IVoiceOutput
 {
-    private readonly SemaphoreSlim _ioLock = new(1, 1);
+    private readonly SemaphoreSlim _writeLock = new(1, 1);
     private readonly object _sync = new();
     private TaskCompletionSource _changed = NewSignal();
     private DiscordVoiceSession? _session;
 
-    public async Task SetSessionAsync(DiscordVoiceSession? session)
+    public Task SetSessionAsync(DiscordVoiceSession? session)
     {
-        await _ioLock.WaitAsync();
-        try
+        DiscordVoiceSession? previousSession;
+        lock (_sync)
         {
-            lock (_sync)
+            if (ReferenceEquals(_session, session))
             {
-                if (ReferenceEquals(_session, session))
-                    return;
-
-                _session = session;
                 SignalLocked();
+                return Task.CompletedTask;
             }
+
+            previousSession = _session;
+            _session = session;
+            SignalLocked();
         }
-        finally
-        {
-            _ioLock.Release();
-        }
+
+        previousSession?.CancelPendingWrites();
+        return Task.CompletedTask;
     }
 
     public Task WritePcmAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
@@ -44,7 +44,7 @@ internal sealed class DiscordVoiceOutput(Action<DiscordVoiceSession> onWriteFail
     {
         while (true)
         {
-            await _ioLock.WaitAsync(ct);
+            await _writeLock.WaitAsync(ct);
             Task waitForChange;
             try
             {
@@ -66,6 +66,10 @@ internal sealed class DiscordVoiceOutput(Action<DiscordVoiceSession> onWriteFail
                     {
                         throw;
                     }
+                    catch (OperationCanceledException)
+                    {
+                        // The voice session was reset or replaced while this write was in flight.
+                    }
                     catch
                     {
                         lock (_sync)
@@ -84,7 +88,7 @@ internal sealed class DiscordVoiceOutput(Action<DiscordVoiceSession> onWriteFail
             }
             finally
             {
-                _ioLock.Release();
+                _writeLock.Release();
             }
 
             await waitForChange.WaitAsync(ct);

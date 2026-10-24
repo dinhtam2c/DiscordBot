@@ -21,12 +21,14 @@ internal sealed class YoutubeAudioSource(
         var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start yt-dlp.");
 
+        Task<string>? stdoutTask = null;
+        Task<string>? stderrTask = null;
         try
         {
             logger.LogDebug("Started yt-dlp process with PID {Pid} for URL extraction.", process.Id);
 
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
-            var stderrTask = process.StandardError.ReadToEndAsync(ct);
+            stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+            stderrTask = process.StandardError.ReadToEndAsync(ct);
 
             await process.WaitForExitAsync(ct);
 
@@ -56,12 +58,12 @@ internal sealed class YoutubeAudioSource(
         {
             logger.LogTrace("yt-dlp URL extraction cancelled.");
 
-            TryKill(process);
+            await StopProcessAsync(process, stdoutTask, stderrTask);
             throw;
         }
         catch
         {
-            TryKill(process);
+            await StopProcessAsync(process, stdoutTask, stderrTask);
             throw;
         }
         finally
@@ -70,8 +72,10 @@ internal sealed class YoutubeAudioSource(
         }
     }
 
-    public Task<Stream> OpenAsync(Track track, CancellationToken ct)
+    public async Task<Stream> OpenAsync(Track track, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         var psi = CreateProcessStartInfo();
 
         ConfigureStreamDownload(psi, track);
@@ -83,15 +87,21 @@ internal sealed class YoutubeAudioSource(
         {
             logger.LogDebug("Started yt-dlp process with PID {Pid}.", process.Id);
 
-            var stderrTask = DrainStderrAsync(process, ct);
+            Stream stream = new YtDlpStream(process, logger);
 
-            Stream stream = new YtDlpStream(process, stderrTask);
-
-            return Task.FromResult(stream);
+            return stream;
         }
         catch
         {
             TryKill(process);
+            try
+            {
+                await process.WaitForExitAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+            }
+
             process.Dispose();
             throw;
         }
@@ -144,25 +154,6 @@ internal sealed class YoutubeAudioSource(
         };
     }
 
-    private async Task DrainStderrAsync(Process process, CancellationToken ct)
-    {
-        try
-        {
-            var stderr = await process.StandardError.ReadToEndAsync(ct);
-
-            if (!string.IsNullOrWhiteSpace(stderr))
-                logger.LogWarning("yt-dlp error output: {ErrorOutput}", stderr);
-        }
-        catch (OperationCanceledException)
-        {
-            logger.LogTrace("yt-dlp stderr draining cancelled.");
-        }
-        catch (Exception ex)
-        {
-            logger.LogTrace(ex, "Error while draining yt-dlp stderr.");
-        }
-    }
-
     private static void TryKill(Process process)
     {
         try
@@ -173,6 +164,32 @@ internal sealed class YoutubeAudioSource(
         catch
         {
             // Ignore cleanup failure.
+        }
+    }
+
+    private static async Task StopProcessAsync(Process process, params Task?[] pendingTasks)
+    {
+        TryKill(process);
+        try
+        {
+            await process.WaitForExitAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+        }
+
+        foreach (var pendingTask in pendingTasks)
+        {
+            if (pendingTask is null)
+                continue;
+
+            try
+            {
+                await pendingTask.ConfigureAwait(false);
+            }
+            catch
+            {
+            }
         }
     }
 }

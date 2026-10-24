@@ -10,6 +10,7 @@ internal sealed class DiscordVoiceSession(
     IAudioClient audioClient) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _streamLock = new(1, 1);
+    private CancellationTokenSource _writeLifetime = new();
     private AudioOutStream? _pcmStream;
     private AudioOutStream? _opusStream;
     private bool _disposed;
@@ -30,13 +31,14 @@ internal sealed class DiscordVoiceSession(
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            using var writeCts = CreateWriteToken(ct);
             _pcmStream ??= audioClient.CreatePCMStream(
                 AudioApplication.Music,
                 bitrate: 128000,
                 bufferMillis: 1000,
                 packetLoss: 5);
 
-            await _pcmStream.WriteAsync(data, ct);
+            await _pcmStream.WriteAsync(data, writeCts.Token);
         }
         finally
         {
@@ -50,8 +52,9 @@ internal sealed class DiscordVoiceSession(
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            using var writeCts = CreateWriteToken(ct);
             _opusStream ??= audioClient.CreateOpusStream(bufferMillis: 3000);
-            await _opusStream.WriteAsync(data, ct);
+            await _opusStream.WriteAsync(data, writeCts.Token);
         }
         finally
         {
@@ -64,11 +67,13 @@ internal sealed class DiscordVoiceSession(
         await _streamLock.WaitAsync(ct);
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            using var writeCts = CreateWriteToken(ct);
             if (_pcmStream is not null)
-                await _pcmStream.FlushAsync(ct);
+                await _pcmStream.FlushAsync(writeCts.Token);
 
             if (_opusStream is not null)
-                await _opusStream.FlushAsync(ct);
+                await _opusStream.FlushAsync(writeCts.Token);
         }
         finally
         {
@@ -78,10 +83,15 @@ internal sealed class DiscordVoiceSession(
 
     public async Task ResetStreamsAsync()
     {
+        CancelPendingWrites();
         await _streamLock.WaitAsync();
         try
         {
+            if (_disposed)
+                return;
+
             DisposeStreams();
+            ReplaceWriteLifetime();
         }
         finally
         {
@@ -94,6 +104,7 @@ internal sealed class DiscordVoiceSession(
 
     public async ValueTask DisposeAsync(bool disposeAudioClient)
     {
+        CancelPendingWrites();
         await _streamLock.WaitAsync();
         try
         {
@@ -102,6 +113,7 @@ internal sealed class DiscordVoiceSession(
 
             _disposed = true;
             DisposeStreams();
+            _writeLifetime.Dispose();
             audioClient.Connected -= OnConnectedAsync;
             audioClient.Disconnected -= OnDisconnectedAsync;
             if (disposeAudioClient)
@@ -137,5 +149,30 @@ internal sealed class DiscordVoiceSession(
         _opusStream?.Dispose();
         _pcmStream = null;
         _opusStream = null;
+    }
+
+    private CancellationTokenSource CreateWriteToken(CancellationToken ct)
+        => CancellationTokenSource.CreateLinkedTokenSource(ct, _writeLifetime.Token);
+
+    internal void CancelPendingWrites()
+    {
+        try
+        {
+            Volatile.Read(ref _writeLifetime).Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch
+        {
+            // Cancellation is best-effort; session replacement and cleanup must continue.
+        }
+    }
+
+    private void ReplaceWriteLifetime()
+    {
+        var previous = _writeLifetime;
+        Volatile.Write(ref _writeLifetime, new CancellationTokenSource());
+        previous.Dispose();
     }
 }

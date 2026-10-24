@@ -41,13 +41,15 @@ internal sealed class FfmpegAudioTranscoder(
             source: null,
             ct);
 
-    private Task<Stream> OpenStreamAsync(
+    private async Task<Stream> OpenStreamAsync(
         string input,
         Action<ProcessStartInfo>? configureInput,
         Action<ProcessStartInfo> configureOutput,
         Stream? source,
         CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+
         var psi = new ProcessStartInfo
         {
             FileName = options.Value.FfmpegPath,
@@ -85,26 +87,47 @@ internal sealed class FfmpegAudioTranscoder(
         var process = Process.Start(psi)
             ?? throw new InvalidOperationException("Failed to start ffmpeg.");
 
+        Task? inputPump = null;
+        CancellationTokenSource? inputPumpLifetime = null;
         try
         {
             logger.LogDebug("Started ffmpeg process with PID {Pid}", process.Id);
 
-            var stderrTask = DrainStderrAsync(process, ct);
-
-            Task? inputPump = null;
-
             if (source is not null)
             {
-                inputPump = PumpAsync(source, process, ct);
+                inputPumpLifetime = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                inputPump = PumpAsync(source, process, inputPumpLifetime.Token);
             }
 
-            Stream stream = new FfmpegStream(process, inputPump, stderrTask);
+            Stream stream = new FfmpegStream(process, inputPump, inputPumpLifetime, logger);
+            inputPumpLifetime = null;
 
-            return Task.FromResult(stream);
+            return stream;
         }
         catch
         {
+            inputPumpLifetime?.Cancel();
             TryKill(process);
+            try
+            {
+                await process.WaitForExitAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+            }
+
+            if (inputPump is not null)
+            {
+                try
+                {
+                    await inputPump.ConfigureAwait(false);
+                }
+                catch
+                {
+                }
+            }
+
+            inputPumpLifetime?.Dispose();
             process.Dispose();
             throw;
         }
@@ -184,29 +207,6 @@ internal sealed class FfmpegAudioTranscoder(
             catch
             {
             }
-
-            throw;
-        }
-    }
-
-    private async Task DrainStderrAsync(Process process, CancellationToken ct)
-    {
-        try
-        {
-            var stderr = await process.StandardError.ReadToEndAsync(ct);
-
-            if (!string.IsNullOrWhiteSpace(stderr))
-            {
-                logger.LogWarning("ffmpeg PID {Pid} error output: {ErrorOutput}", process.Id, stderr);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            logger.LogTrace("ffmpeg stderr draining cancelled, PID: {Pid}.", process.Id);
-        }
-        catch (Exception ex)
-        {
-            logger.LogTrace(ex, "Error while draining ffmpeg stderr PID {Pid}.", process.Id);
 
             throw;
         }
