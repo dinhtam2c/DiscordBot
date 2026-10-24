@@ -82,7 +82,9 @@ RUN case "${TARGETARCH}" in \
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS yt-dlp
 
 ARG TARGETARCH
-ARG YTDLP_VERSION=2026.10.21.233146
+ARG YTDLP_CHANNEL=stable
+ARG YTDLP_STABLE_VERSION=2026.10.21
+ARG YTDLP_NIGHTLY_VERSION=latest
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -91,15 +93,29 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 RUN case "${TARGETARCH}" in \
-        amd64)  YTDLP_ARCH="linux" ;; \
-        arm64)  YTDLP_ARCH="linux_aarch64" ;; \
-        *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
+        amd64)  YTDLP_ASSET="yt-dlp_linux" ;; \
+        arm64)  YTDLP_ASSET="yt-dlp_linux_aarch64" ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
     esac && \
-    curl -fL \
-        "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/${YTDLP_VERSION}/yt-dlp_${YTDLP_ARCH}" \
-        -o /yt-dlp && \
-    chmod 755 /yt-dlp
-
+    case "${YTDLP_CHANNEL}" in \
+        stable) \
+            curl -fL \
+                "https://github.com/yt-dlp/yt-dlp/releases/download/${YTDLP_STABLE_VERSION}/${YTDLP_ASSET}" \
+                -o /out \
+            ;; \
+        nightly) \
+            if [ "${YTDLP_NIGHTLY_VERSION}" = "latest" ]; then \
+                YTDLP_URL="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/${YTDLP_ASSET}"; \
+            else \
+                YTDLP_URL="https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/download/${YTDLP_NIGHTLY_VERSION}/${YTDLP_ASSET}"; \
+            fi && \
+            curl -fL \
+                "${YTDLP_URL}" \
+                -o /out \
+            ;; \
+        *) echo "Unsupported YTDLP_CHANNEL: ${YTDLP_CHANNEL} (use stable or nightly)" >&2; exit 1 ;; \
+    esac && \
+    chmod 755 /out
 
 # =========================
 # 4. Runtime
@@ -134,7 +150,7 @@ COPY --from=libdave /out/lib/ /usr/local/lib/
 RUN ldconfig
 
 # yt-dlp
-COPY --from=yt-dlp /yt-dlp /usr/local/bin/yt-dlp
+COPY --from=yt-dlp /out /usr/local/bin/yt-dlp
 
 # Application
 WORKDIR /app
