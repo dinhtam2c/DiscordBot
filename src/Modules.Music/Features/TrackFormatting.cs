@@ -28,5 +28,5 @@ internal static class TrackFormatting
             : duration.ToString(@"mm\:ss");
 
     public static string Entry(Track track)
-        => $"{Format.Url(EscapeText(track.Title), track.SourceUrl)} - {Artist(track)} - {Duration(track.Duration)}";
+        => $"**{Format.Url(EscapeText(track.Title), track.SourceUrl)}** • {Artist(track)} • `{Duration(track.Duration)}`";
 }
