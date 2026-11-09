@@ -1,7 +1,8 @@
-using Application.Discord.Interactions.Command;
+﻿using Application.Discord.Interactions;
 using Discord;
+using Discord.Interactions;
 using Discord.WebSocket;
-using Domain.ValueObjects;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -9,189 +10,112 @@ namespace Infrastructure.Discord.DiscordNet;
 
 internal sealed class DiscordCommandRegistrar(
     IOptions<DiscordOptions> options,
+    IOptions<DiscordCommandOptions> commandOptions,
     DiscordSocketClient client,
-    IEnumerable<ICommandDefinition> definitions,
-    IEnumerable<IInteractionCommandSource> commandSources,
-    ILogger<DiscordCommandRegistrar> logger) : IDiscordReadyHandler
+    InteractionService commands,
+    IServiceScopeFactory scopes,
+    ILogger<DiscordCommandRegistrar> logger)
 {
-    private readonly SemaphoreSlim _registrationLock = new(1, 1);
-    private bool _isRegistered;
-
-    public async Task OnReadyAsync(CancellationToken ct)
+    public async Task LoadModulesAsync(CancellationToken ct)
     {
-        await _registrationLock.WaitAsync(ct);
-        try
+        await using var scope = scopes.CreateAsyncScope();
+        var services = scope.ServiceProvider;
+        foreach (var module in commandOptions.Value.Modules.Distinct())
         {
-            if (_isRegistered)
-                return;
-
-            var desiredDefinitions = definitions
-                .Concat(commandSources.SelectMany(source => source.Commands))
-                .ToArray();
-
-            var duplicateName = desiredDefinitions
-                .GroupBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault(group => group.Count() > 1);
-            if (duplicateName is not null)
-                throw new InvalidOperationException($"More than one application command is named '{duplicateName.Key}'.");
-
-            var desiredCommands = desiredDefinitions
-                .Select(MapCommand)
-                .Cast<ApplicationCommandProperties>()
-                .ToArray();
-
-            if (options.Value.GuildId != 0)
-                await ReconcileGuildCommandsAsync(new GuildId(options.Value.GuildId), desiredDefinitions, desiredCommands);
-            else
-                await ReconcileGlobalCommandsAsync(desiredDefinitions, desiredCommands);
-
-            _isRegistered = true;
+            ct.ThrowIfCancellationRequested();
+            await commands.AddModuleAsync(module, services);
         }
-        finally
+        foreach (var configure in commandOptions.Value.ConfigureModules)
         {
-            _registrationLock.Release();
+            ct.ThrowIfCancellationRequested();
+            await configure(commands, services);
         }
+
+        var duplicate = commands.SlashCommands.GroupBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault(group => group.Count() > 1);
+        if (duplicate is not null)
+            throw new InvalidOperationException($"More than one application command is named '{duplicate.Key}'.");
     }
 
-    private async Task ReconcileGuildCommandsAsync(
-        GuildId guildId,
-        IReadOnlyCollection<ICommandDefinition> desiredDefinitions,
-        ApplicationCommandProperties[] desiredCommands)
+    public async Task SynchronizeAsync(CancellationToken ct)
     {
-        var guild = client.GetGuild(guildId.Value)
-            ?? throw new InvalidOperationException($"Guild {guildId} is not available in the Discord cache.");
-        var existingCommands = await guild.GetApplicationCommandsAsync();
-
-        if (!HasChanges(existingCommands, desiredDefinitions))
+        var desired = commands.SlashCommands.ToArray();
+        var requestOptions = new RequestOptions { CancelToken = ct };
+        if (options.Value.GuildId != 0)
         {
-            logger.LogInformation("Guild application commands are already current for guild {GuildId}.", guildId);
-            return;
-        }
-
-        await guild.BulkOverwriteApplicationCommandAsync(desiredCommands);
-        logger.LogInformation("Reconciled {CommandCount} guild application commands for guild {GuildId}.", desiredCommands.Length, guildId);
-    }
-
-    private async Task ReconcileGlobalCommandsAsync(
-        IReadOnlyCollection<ICommandDefinition> desiredDefinitions,
-        ApplicationCommandProperties[] desiredCommands)
-    {
-        var existingCommands = await client.GetGlobalApplicationCommandsAsync();
-
-        if (!HasChanges(existingCommands, desiredDefinitions))
-        {
-            logger.LogInformation("Global application commands are already current.");
-            return;
-        }
-
-        await client.BulkOverwriteGlobalApplicationCommandsAsync(desiredCommands);
-        logger.LogInformation("Reconciled {CommandCount} global application commands.", desiredCommands.Length);
-    }
-
-    private static bool HasChanges(
-        IReadOnlyCollection<SocketApplicationCommand> existingCommands,
-        IReadOnlyCollection<ICommandDefinition> desiredDefinitions)
-    {
-        if (existingCommands.Count != desiredDefinitions.Count)
-            return true;
-
-        var existingByName = existingCommands.ToDictionary(command => command.Name, StringComparer.OrdinalIgnoreCase);
-        foreach (var desired in desiredDefinitions)
-        {
-            if (!existingByName.TryGetValue(desired.Name, out var existing)
-                || existing.Type != ApplicationCommandType.Slash
-                || !string.Equals(existing.Description, desired.Description, StringComparison.Ordinal)
-                || HasOptionChanges(existing.Options, desired.Options))
+            var guild = client.GetGuild(options.Value.GuildId)
+                ?? throw new InvalidOperationException($"Guild {options.Value.GuildId} is not available in the Discord cache.");
+            var existing = await guild.GetApplicationCommandsAsync(options: requestOptions);
+            if (HasChanges(existing, desired))
             {
-                return true;
+                ct.ThrowIfCancellationRequested();
+                await commands.RegisterCommandsToGuildAsync(guild.Id);
+                logger.LogInformation("Reconciled {CommandCount} guild application commands for guild {GuildId}.", desired.Length, guild.Id);
             }
         }
+        else
+        {
+            var existing = await client.GetGlobalApplicationCommandsAsync(options: requestOptions);
+            if (HasChanges(existing, desired, global: true))
+            {
+                ct.ThrowIfCancellationRequested();
+                await commands.RegisterCommandsGloballyAsync();
+                logger.LogInformation("Reconciled {CommandCount} global application commands.", desired.Length);
+            }
+        }
+    }
 
-        return false;
+    private static bool HasChanges(IReadOnlyCollection<SocketApplicationCommand> existing, SlashCommandInfo[] desired, bool global = false)
+    {
+        if (existing.Count != desired.Length)
+            return true;
+        var existingByName = existing.ToDictionary(command => command.Name, StringComparer.OrdinalIgnoreCase);
+        return desired.Any(command => !existingByName.TryGetValue(command.Name, out var actual)
+            || actual.Type != ApplicationCommandType.Slash
+            || actual.Description != command.Description
+            || actual.IsNsfw != command.IsNsfw
+            || actual.DefaultMemberPermissions.RawValue != (ulong)(command.DefaultMemberPermissions ?? 0)
+            || (global && command.ContextTypes is { Count: > 0 } contexts && !contexts.ToHashSet().SetEquals(actual.ContextTypes ?? []))
+            || (global && command.IntegrationTypes is { Count: > 0 } integrations && !integrations.ToHashSet().SetEquals(actual.IntegrationTypes ?? []))
+            || HasOptionChanges(actual.Options ?? [], command.FlattenedParameters));
     }
 
     private static bool HasOptionChanges(
-        IReadOnlyCollection<SocketApplicationCommandOption> existingOptions,
-        IReadOnlyList<CommandOptionDefinition> desiredOptions)
+        IReadOnlyCollection<SocketApplicationCommandOption> actual,
+        IReadOnlyCollection<SlashCommandParameterInfo> desired)
     {
-        if (existingOptions.Count != desiredOptions.Count)
+        if (actual.Count != desired.Count)
             return true;
+        return actual.Zip(desired).Any(pair =>
+            pair.First.Name != pair.Second.Name
+            || pair.First.Description != pair.Second.Description
+            || pair.First.Type != (pair.Second.DiscordOptionType ?? pair.Second.TypeConverter.GetDiscordType())
+            || pair.First.IsRequired.GetValueOrDefault() != pair.Second.IsRequired
+            || pair.First.IsAutocomplete.GetValueOrDefault() != pair.Second.IsAutocomplete
+            || HasNumericRangeChanges(pair.First, pair.Second)
+            || pair.First.MinLength != pair.Second.MinLength
+            || pair.First.MaxLength != pair.Second.MaxLength
+            || !(pair.Second.ChannelTypes ?? []).ToHashSet().SetEquals(pair.First.ChannelTypes ?? [])
+            || HasChoiceChanges(pair.First.Choices ?? [], pair.Second.Choices ?? [])
+            || pair.First.Options is { Count: > 0 });
+    }
 
-        var existing = existingOptions.ToArray();
-        for (var index = 0; index < desiredOptions.Count; index++)
-        {
-            var actualOption = existing[index];
-            var desiredOption = desiredOptions[index];
-            if (!string.Equals(actualOption.Name, desiredOption.Name, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(actualOption.Description, desiredOption.Description, StringComparison.Ordinal)
-                || actualOption.Type != MapOptionType(desiredOption.Type)
-                || actualOption.IsRequired.GetValueOrDefault() != desiredOption.Required
-                || HasChoiceChanges(actualOption.Choices, desiredOption.Choices))
-            {
-                return true;
-            }
-        }
+    private static bool HasNumericRangeChanges(SocketApplicationCommandOption actual, SlashCommandParameterInfo desired)
+    {
+        if (actual.Type is not (ApplicationCommandOptionType.Integer or ApplicationCommandOptionType.Number))
+            return false;
 
-        return false;
+        // Discord.Net fills these defaults in metadata, while Discord may omit unrestricted bounds.
+        const double maximum = 9007199254740991;
+        return actual.MinValue.GetValueOrDefault(-maximum) != desired.MinValue.GetValueOrDefault(-maximum)
+            || actual.MaxValue.GetValueOrDefault(maximum) != desired.MaxValue.GetValueOrDefault(maximum);
     }
 
     private static bool HasChoiceChanges(
-        IReadOnlyCollection<SocketApplicationCommandChoice> existingChoices,
-        IReadOnlyList<CommandOptionChoice>? desiredChoices)
-    {
-        var expected = desiredChoices ?? [];
-        if (existingChoices.Count != expected.Count)
-            return true;
-
-        var actual = existingChoices.ToArray();
-        for (var index = 0; index < expected.Count; index++)
-        {
-            if (!string.Equals(actual[index].Name, expected[index].Name, StringComparison.Ordinal)
-                || !string.Equals(
-                    Convert.ToString(actual[index].Value, System.Globalization.CultureInfo.InvariantCulture),
-                    Convert.ToString(expected[index].Value, System.Globalization.CultureInfo.InvariantCulture),
-                    StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static SlashCommandProperties MapCommand(ICommandDefinition definition)
-    {
-        var commandBuilder = new SlashCommandBuilder()
-            .WithName(definition.Name)
-            .WithDescription(definition.Description);
-
-        foreach (var option in definition.Options)
-        {
-            commandBuilder.AddOption(
-                option.Name,
-                MapOptionType(option.Type),
-                option.Description,
-                isRequired: option.Required,
-                choices: option.Choices?.Select(choice => new ApplicationCommandOptionChoiceProperties
-                {
-                    Name = choice.Name,
-                    Value = choice.Value
-                }).ToArray());
-        }
-
-        return commandBuilder.Build();
-    }
-
-    private static ApplicationCommandOptionType MapOptionType(CommandOptionType type)
-        => type switch
-        {
-            CommandOptionType.String => ApplicationCommandOptionType.String,
-            CommandOptionType.Integer => ApplicationCommandOptionType.Integer,
-            CommandOptionType.Boolean => ApplicationCommandOptionType.Boolean,
-            CommandOptionType.Number => ApplicationCommandOptionType.Number,
-            CommandOptionType.User => ApplicationCommandOptionType.User,
-            CommandOptionType.Channel => ApplicationCommandOptionType.Channel,
-            CommandOptionType.Role => ApplicationCommandOptionType.Role,
-            _ => throw new ArgumentOutOfRangeException(nameof(type), type, null)
-        };
+        IReadOnlyCollection<SocketApplicationCommandChoice> actual,
+        IReadOnlyCollection<ParameterChoice> desired)
+        => actual.Count != desired.Count || actual.Zip(desired).Any(pair =>
+            pair.First.Name != pair.Second.Name
+            || !string.Equals(Convert.ToString(pair.First.Value, System.Globalization.CultureInfo.InvariantCulture),
+                Convert.ToString(pair.Second.Value, System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal));
 }

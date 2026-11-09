@@ -7,7 +7,7 @@ namespace Modules.Music.Tracks.SoundCloud;
 
 internal sealed class SoundCloudTrackResolver(
     IOptions<TrackSearchOptions> searchOptions,
-    YtDlpJsonRunner ytDlpRunner) : ITrackResolver
+    YtDlpClient ytDlpRunner) : ITrackResolver
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

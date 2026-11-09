@@ -15,9 +15,12 @@ internal sealed class PlaybackQueue
         _items.Add(item);
     }
 
-    public void EnqueueFirst(QueueItem item)
+    public void EnqueueRange(IEnumerable<QueueItem> items, bool first)
     {
-        _items.Insert(0, item);
+        if (first)
+            _items.InsertRange(0, items);
+        else
+            _items.AddRange(items);
     }
 
     public QueueItem? Dequeue()

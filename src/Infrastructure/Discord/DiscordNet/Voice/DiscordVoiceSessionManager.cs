@@ -259,7 +259,6 @@ internal sealed class DiscordVoiceSessionManager(
     {
         await state.Output.SetSessionAsync(null);
         state.SetSession(null);
-        state.ClearFault(session);
         session.ConnectionChanged -= state.Signal;
 
         if (disconnectFromDiscord)
@@ -380,15 +379,6 @@ internal sealed class DiscordVoiceSessionManager(
         {
             lock (_sync)
                 return ReferenceEquals(_faultedSession, session);
-        }
-
-        public void ClearFault(DiscordVoiceSession session)
-        {
-            lock (_sync)
-            {
-                if (ReferenceEquals(_faultedSession, session))
-                    _faultedSession = null;
-            }
         }
 
         public void MarkFaulted(DiscordVoiceSession session)

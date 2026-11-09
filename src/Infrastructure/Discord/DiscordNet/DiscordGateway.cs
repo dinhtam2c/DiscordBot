@@ -1,9 +1,7 @@
-﻿using Application.Discord.Runtime;
-using Application.Abstractions;
-using Discord;
+﻿using Discord;
 using Discord.LibDave;
-using Discord.LibDave.Binding;
 using Discord.WebSocket;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -11,55 +9,118 @@ namespace Infrastructure.Discord.DiscordNet;
 
 internal sealed class DiscordGateway(
     IOptions<DiscordOptions> options,
-    IAppLifetime appLifetime,
+    IHostApplicationLifetime lifetime,
     DiscordSocketClient client,
-    IEnumerable<IDiscordEventSubscriber> subscribers,
-    IEnumerable<IDiscordReadyHandler> readyHandlers,
-    ILogger<DiscordGateway> logger) : IDiscordGateway
+    DiscordInteractionAdapter interactions,
+    DiscordCommandRegistrar registrar,
+    ILogger<DiscordGateway> logger) : IHostedService, IAsyncDisposable
 {
-    public async Task StartAsync(CancellationToken ct)
-    {
-        // Beware: multiple start
-        Dave.SetLogSink(DaveLogSink);
-        client.Log += Log;
-        client.Ready += HandleClientReadyAsync;
+    private readonly object _sync = new();
+    private readonly CancellationTokenSource _shutdown = CancellationTokenSource.CreateLinkedTokenSource(lifetime.ApplicationStopping);
+    private Task? _startTask;
+    private Task? _stopTask;
+    private Task? _synchronizationTask;
 
-        foreach (var subscriber in subscribers)
+    public Task StartAsync(CancellationToken ct)
+    {
+        lock (_sync)
         {
-            subscriber.Subscribe();
+            if (_stopTask is not null)
+                throw new InvalidOperationException("The Discord gateway has already stopped.");
+            return _startTask ??= StartCoreAsync(ct);
         }
+    }
+
+    private async Task StartCoreAsync(CancellationToken ct)
+    {
+        using var startup = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdown.Token);
+        logger.LogInformation("Starting Discord gateway...");
+        await registrar.LoadModulesAsync(startup.Token);
+        startup.Token.ThrowIfCancellationRequested();
+
+        Dave.SetLogSink(static (_, _, _, _) => { });
+        client.Log += Log;
+        client.Ready += HandleReadyAsync;
+        client.InteractionCreated += interactions.HandleAsync;
 
         await client.LoginAsync(TokenType.Bot, options.Value.Token);
+        startup.Token.ThrowIfCancellationRequested();
         await client.StartAsync();
     }
 
-    public async Task StopAsync(CancellationToken ct)
+    private Task HandleReadyAsync()
     {
-        await client.StopAsync();
+        lock (_sync)
+        {
+            if (!_shutdown.IsCancellationRequested && _stopTask is null)
+                _synchronizationTask ??= Task.Run(SynchronizeCommandsAsync);
+        }
+        return Task.CompletedTask;
     }
 
-    private async Task HandleClientReadyAsync()
+    private async Task SynchronizeCommandsAsync()
     {
-        foreach (var handler in readyHandlers)
+        var ct = _shutdown.Token;
+        var retryDelay = TimeSpan.FromSeconds(1);
+        while (!ct.IsCancellationRequested)
         {
             try
             {
-                await handler.OnReadyAsync(appLifetime.Stopping);
+                await registrar.SynchronizeAsync(ct);
+                logger.LogInformation("Discord commands are synchronized.");
+                return;
             }
-            catch (OperationCanceledException) when (appLifetime.Stopping.IsCancellationRequested)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 return;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Discord ready handler {HandlerType} failed.", handler.GetType().Name);
+                logger.LogWarning(ex, "Could not synchronize Discord commands; retrying in {RetrySeconds} seconds.", retryDelay.TotalSeconds);
             }
+            await Task.Delay(retryDelay, ct);
+            retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, 30));
         }
+    }
+
+    public Task StopAsync(CancellationToken ct)
+    {
+        lock (_sync)
+            return (_stopTask ??= StopCoreAsync()).WaitAsync(ct);
+    }
+
+    private async Task StopCoreAsync()
+    {
+        await _shutdown.CancelAsync();
+        // A stop during startup must not race login/event attachment.
+        if (_startTask is not null)
+        {
+            try { await _startTask; }
+            catch { /* Startup failures are reported by the host; cleanup still runs. */ }
+        }
+
+        client.Ready -= HandleReadyAsync;
+        client.InteractionCreated -= interactions.HandleAsync;
+        if (_synchronizationTask is not null)
+        {
+            try { await _synchronizationTask; }
+            catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+        }
+
+        logger.LogInformation("Stopping Discord gateway...");
+        try { await client.StopAsync(); }
+        finally { client.Log -= Log; }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync(CancellationToken.None);
+        _shutdown.Dispose();
     }
 
     private Task Log(LogMessage message)
     {
-        LogLevel logLevel = message.Severity switch
+        var level = message.Severity switch
         {
             LogSeverity.Critical => LogLevel.Critical,
             LogSeverity.Error => LogLevel.Error,
@@ -69,24 +130,7 @@ internal sealed class DiscordGateway(
             LogSeverity.Debug => LogLevel.Trace,
             _ => LogLevel.Information
         };
-
-        logger.Log(logLevel, message.Exception, "{Message}", message.Message);
-
+        logger.Log(level, message.Exception, "{Message}", message.Message);
         return Task.CompletedTask;
-    }
-
-    private void DaveLogSink(LoggingSeverity severity, string filePath, int lineNumber, string message)
-    {
-        LogLevel logLevel = severity switch
-        {
-            LoggingSeverity.Error => LogLevel.Error,
-            LoggingSeverity.Warning => LogLevel.Warning,
-            LoggingSeverity.Info => LogLevel.Information,
-            LoggingSeverity.Verbose => LogLevel.Debug,
-            LoggingSeverity.None => LogLevel.None,
-            _ => LogLevel.Information
-        };
-
-        //logger.Log(logLevel, "{FilePath}:{LineNumber} - {Message}", filePath, lineNumber, message);
     }
 }

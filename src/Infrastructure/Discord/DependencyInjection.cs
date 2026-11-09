@@ -1,7 +1,7 @@
-﻿using Application.Discord.Runtime;
 using Application.Discord.User;
 using Application.Discord.Voice;
 using Discord;
+using Discord.Interactions;
 using Discord.WebSocket;
 using Infrastructure.Discord.DiscordNet;
 using Infrastructure.Discord.DiscordNet.Voice;
@@ -32,11 +32,13 @@ public static class DependencyInjection
             return new DiscordSocketClient(config);
         });
 
-        services.AddSingleton<IDiscordEventSubscriber, DiscordInteractionAdapter>();
-        services.AddSingleton<IDiscordReadyHandler, DiscordCommandRegistrar>();
-
-        services.AddSingleton<IDiscordRuntime, DiscordRuntime>();
-        services.AddSingleton<IDiscordGateway, DiscordGateway>();
+        services.AddSingleton(sp => new InteractionService(
+            sp.GetRequiredService<DiscordSocketClient>().Rest,
+            new InteractionServiceConfig { DefaultRunMode = RunMode.Sync, AutoServiceScopes = false }));
+        services.AddSingleton<DiscordInteractionAdapter>();
+        services.AddSingleton<DiscordCommandRegistrar>();
+        // Register before voice and module workers so the gateway stops after their cleanup.
+        services.AddHostedService<DiscordGateway>();
 
         services.AddSingleton<IDiscordUserService, DiscordUserService>();
 

@@ -18,4 +18,7 @@ internal sealed record ShuffleQueue : PlayerRequest;
 internal sealed record RemoveTrack(long Index) : PlayerRequest;
 internal sealed record MoveTrack(long Index, long NewIndex) : PlayerRequest;
 
-internal sealed record PlayerResult(PlayerSnapshot? Before, PlayerSnapshot? After);
+internal sealed record PlayerResult(QueueItem? PreviousItem, bool WasPaused, int QueueCount, bool StartsPlayback)
+{
+    public bool HadCurrentTrack => PreviousItem is not null;
+}

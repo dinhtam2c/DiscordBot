@@ -1,10 +1,5 @@
-﻿using Application;
+﻿using Application.Discord.Interactions;
 using Microsoft.Extensions.DependencyInjection;
-using Modules.Utility.About;
-using Modules.Utility.Echo;
-using Modules.Utility.Help;
-using Modules.Utility.Ping;
-using Modules.Utility.UserInfo;
 
 namespace Modules.Utility;
 
@@ -12,12 +7,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddUtilityModule(this IServiceCollection services)
     {
-        services.AddInteraction<HelpCommand, HelpHandler>();
-        services.AddInteraction<AboutCommand, AboutHandler>();
-        services.AddInteraction<PingCommand, PingHandler>();
-        services.AddInteraction<EchoCommand, EchoHandler>();
-        services.AddInteraction<UserInfoCommand, UserInfoHandler>();
-
+        services.Configure<DiscordCommandOptions>(options => options.Modules.Add(typeof(UtilityCommands)));
         return services;
     }
 }

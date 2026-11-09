@@ -32,9 +32,6 @@ internal sealed class DiscordVoiceOutput(Action<DiscordVoiceSession> onWriteFail
     public Task WritePcmAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
         => WriteAsync((session, token) => session.WritePcmAsync(data, token), ct);
 
-    public Task WriteOpusAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
-        => WriteAsync((session, token) => session.WriteOpusAsync(data, token), ct);
-
     public Task FlushAsync(CancellationToken ct)
         => WriteAsync((session, token) => session.FlushAsync(token), ct);
 

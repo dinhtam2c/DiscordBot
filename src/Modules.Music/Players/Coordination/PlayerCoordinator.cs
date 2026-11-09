@@ -1,5 +1,4 @@
 using Application.Abstractions;
-using Application.Discord.Interactions;
 using Application.Discord.User;
 using Application.Discord.Voice;
 using Domain.ValueObjects;
@@ -62,7 +61,10 @@ internal sealed class PlayerCoordinator(
         var repository = services.GetRequiredService<IPlayerRepository>();
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
         var player = await repository.GetByIdAsync(guildId, ct);
-        var before = player is null ? null : PlayerSnapshot.From(player);
+        var previousItem = player?.CurrentQueueItem;
+        var wasPaused = player?.IsPaused ?? false;
+        var previousChannel = player?.VoiceChannelId;
+        var existed = player is not null;
         var changed = true;
 
         switch (request)
@@ -80,34 +82,19 @@ internal sealed class PlayerCoordinator(
                 if (player.VoiceChannelId is null)
                 {
                     var users = services.GetRequiredService<IDiscordUserService>();
-                    var channel = await users.GetUserVoiceChannelAsync(guildId, enqueue.RequesterId, ct)
+                    var channelId = await users.GetUserVoiceChannelIdAsync(guildId, enqueue.RequesterId, ct)
                         ?? throw new UserFriendlyException("You are not in a voice channel.");
-                    player.Join(channel.Id);
+                    player.Join(channelId);
                 }
 
                 var clock = services.GetRequiredService<IClock>();
                 var items = enqueue.Tracks.Select(track => new QueueItem(track, enqueue.RequesterId, clock.UtcNow)).ToArray();
-                if (!enqueue.PlayNext)
-                {
-                    foreach (var item in items)
-                        player.Play(item);
-                }
-                else
-                {
-                    var start = 0;
-                    if (!player.HasCurrentTrack)
-                    {
-                        player.Play(items[0]);
-                        start = 1;
-                    }
-                    for (var i = items.Length - 1; i >= start; i--)
-                        player.PlayNext(items[i]);
-                }
+                player.Enqueue(items, enqueue.PlayNext);
                 break;
 
             case SetVolume volume:
                 player = await GetOrCreateAsync(player, guildId, repository, ct);
-                changed = player.SetVolume(volume.Volume) || before is null;
+                changed = player.SetVolume(volume.Volume) || !existed;
                 break;
 
             case PausePlayback:
@@ -168,16 +155,17 @@ internal sealed class PlayerCoordinator(
             await unitOfWork.SaveChangesAsync(ct);
 
         // Persist first. The mailbox holds the next request until runtime has accepted this target.
-        await ApplyAsync(guildId, player, before, request is JoinVoice, request is LeaveVoice, ct);
-        return new PlayerResult(before, player is null ? null : PlayerSnapshot.From(player));
+        await ApplyAsync(guildId, player, previousChannel, request is JoinVoice, request is LeaveVoice, ct);
+        return new PlayerResult(previousItem, wasPaused, player?.QueueCount ?? 0,
+            previousItem is null && player?.HasCurrentTrack == true);
     }
 
     private async Task ApplyAsync(
-        GuildId guildId, Player? player, PlayerSnapshot? before, bool explicitJoin, bool explicitLeave, CancellationToken ct)
+        GuildId guildId, Player? player, ChannelId? previousChannel, bool explicitJoin, bool explicitLeave, CancellationToken ct)
     {
         if (player?.VoiceChannelId is { } channel)
         {
-            if (explicitJoin || before?.VoiceChannelId != channel)
+            if (explicitJoin || previousChannel != channel)
                 await voice.RequestJoinAsync(guildId, channel, ct);
 
             await playback.ApplyAsync(guildId, PlaybackTarget.From(player), PostPlaybackEnded, ct);
@@ -185,37 +173,75 @@ internal sealed class PlayerCoordinator(
         else
         {
             await playback.ApplyAsync(guildId, PlaybackTarget.From(null), PostPlaybackEnded, ct);
-            if (explicitLeave || before?.VoiceChannelId is not null)
+            if (explicitLeave || previousChannel is not null)
                 await voice.RequestLeaveAsync(guildId, ct);
         }
     }
 
     private void PostPlaybackEnded(PlaybackEnded ended)
     {
+        var pending = new PendingCompletion(ended);
         lock (_sync)
         {
             if (!_stopping && _mailboxes.TryGetValue(ended.GuildId, out var mailbox))
-                mailbox.Post(ct => HandleEndedAsync(ended, ct));
+                mailbox.Post(ct => HandleEndedAsync(pending, ct));
         }
     }
 
-    private async Task HandleEndedAsync(PlaybackEnded ended, CancellationToken ct)
+    private async Task HandleEndedAsync(PendingCompletion pending, CancellationToken ct)
     {
-        if (!playback.IsCurrent(ended.GuildId, ended.SessionId))
-            return;
-
-        await using var scope = scopes.CreateAsyncScope();
-        var repository = scope.ServiceProvider.GetRequiredService<IPlayerRepository>();
-        var player = await repository.GetByIdAsync(ended.GuildId, ct);
-        if (player is not null && player.HasCurrentTrack)
+        var ended = pending.Ended;
+        try
         {
-            player.FinishCurrentTrack();
-            await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
-        }
+            if (!pending.Saved && !playback.IsCurrent(ended.GuildId, ended.SessionId))
+                return;
 
-        // Retire the ended session before applying: track-loop intentionally keeps the same queue item.
-        await playback.CompleteAsync(ended.GuildId, ended.SessionId);
-        await playback.ApplyAsync(ended.GuildId, PlaybackTarget.From(player), PostPlaybackEnded, ct);
+            await using var scope = scopes.CreateAsyncScope();
+            var repository = scope.ServiceProvider.GetRequiredService<IPlayerRepository>();
+            var player = await repository.GetByIdAsync(ended.GuildId, ct);
+            if (!pending.Saved)
+            {
+                if (player?.CurrentQueueItem?.Id == ended.QueueItemId)
+                {
+                    if (ended.Reason == PlaybackEndReason.Failed)
+                        player.Skip();
+                    else
+                        player.FinishCurrentTrack();
+                    await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
+                }
+                pending.Saved = true;
+            }
+
+            // Once saved, retries only synchronize the latest stored target. Never advance twice.
+            await playback.CompleteAsync(ended.GuildId, ended.SessionId);
+            await playback.ApplyAsync(ended.GuildId, PlaybackTarget.From(player), PostPlaybackEnded, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Could not handle playback completion for guild {GuildId}; retrying.", ended.GuildId);
+            _ = RetryCompletionAsync(pending, ct);
+        }
+    }
+
+    private async Task RetryCompletionAsync(PendingCompletion pending, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), ct);
+            lock (_sync)
+            {
+                if (!_stopping && _mailboxes.TryGetValue(pending.Ended.GuildId, out var mailbox))
+                    mailbox.Post(token => HandleEndedAsync(pending, token));
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+    }
+
+    private sealed class PendingCompletion(PlaybackEnded ended)
+    {
+        public PlaybackEnded Ended { get; } = ended;
+        public bool Saved { get; set; }
     }
 
     private static async Task<Player> GetOrCreateAsync(Player? player, GuildId guildId, IPlayerRepository repository, CancellationToken ct)

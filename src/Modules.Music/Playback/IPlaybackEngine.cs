@@ -10,4 +10,6 @@ internal interface IPlaybackEngine
     Task CompleteAsync(GuildId guildId, Guid sessionId);
 }
 
-internal sealed record PlaybackEnded(GuildId GuildId, Guid SessionId);
+internal enum PlaybackEndReason { Completed, Failed }
+
+internal sealed record PlaybackEnded(GuildId GuildId, Guid SessionId, Guid QueueItemId, PlaybackEndReason Reason);

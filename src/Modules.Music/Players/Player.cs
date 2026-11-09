@@ -71,28 +71,17 @@ internal sealed class Player
         VoiceChannelId = null;
     }
 
-    public void Play(QueueItem item)
+    public void Enqueue(IReadOnlyList<QueueItem> items, bool playNext)
     {
-        if (HasCurrentTrack)
+        if (items.Count == 0)
+            return;
+        var start = 0;
+        if (!HasCurrentTrack)
         {
-            _queue.Enqueue(item);
+            CurrentQueueItem = items[0];
+            start = 1;
         }
-        else
-        {
-            CurrentQueueItem = item;
-        }
-    }
-
-    public void PlayNext(QueueItem item)
-    {
-        if (HasCurrentTrack)
-        {
-            _queue.EnqueueFirst(item);
-        }
-        else
-        {
-            CurrentQueueItem = item;
-        }
+        _queue.EnqueueRange(items.Skip(start), first: playNext);
     }
 
     public bool Pause()
@@ -135,19 +124,10 @@ internal sealed class Player
             return;
         }
 
-        if (_queue.Count > 0)
-        {
-            if (LoopMode == LoopMode.Queue && HasCurrentTrack)
-            {
-                _queue.Enqueue(CurrentQueueItem!);
-            }
+        if (LoopMode == LoopMode.Queue && HasCurrentTrack)
+            _queue.Enqueue(CurrentQueueItem!);
 
-            CurrentQueueItem = _queue.Dequeue();
-        }
-        else
-        {
-            CurrentQueueItem = null;
-        }
+        CurrentQueueItem = _queue.Dequeue();
     }
 
     public void Stop()

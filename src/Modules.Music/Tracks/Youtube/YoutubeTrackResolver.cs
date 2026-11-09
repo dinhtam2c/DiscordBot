@@ -8,7 +8,7 @@ namespace Modules.Music.Tracks.Youtube;
 
 internal sealed class YoutubeTrackResolver(
     IOptions<TrackSearchOptions> options,
-    YtDlpJsonRunner ytDlpRunner) : ITrackResolver
+    YtDlpClient ytDlpRunner) : ITrackResolver
 {
     public TrackSource Source { get; } = TrackSource.Youtube;
 
@@ -86,15 +86,12 @@ internal sealed class YoutubeTrackResolver(
             ct);
     }
 
-    private async Task<IReadOnlyList<Track>> ExecuteAsync(string input, bool noPlaylist, CancellationToken ct, bool flatPlaylist = false)
+    private async Task<IReadOnlyList<Track>> ExecuteAsync(string input, bool noPlaylist, CancellationToken ct)
     {
         var arguments = new List<string> { "--dump-single-json" };
 
         if (noPlaylist)
             arguments.Add("--no-playlist");
-
-        if (flatPlaylist)
-            arguments.Add("--flat-playlist");
 
         arguments.Add("--extractor-args");
         arguments.Add("youtube:player_client=android,ios,web");

@@ -12,14 +12,11 @@ internal sealed class DiscordVoiceSession(
     private readonly SemaphoreSlim _streamLock = new(1, 1);
     private CancellationTokenSource _writeLifetime = new();
     private AudioOutStream? _pcmStream;
-    private AudioOutStream? _opusStream;
     private bool _disposed;
 
     public GuildId GuildId => guildId;
 
     public ChannelId VoiceChannelId => voiceChannelId;
-
-    public ConnectionState ConnectionState => audioClient.ConnectionState;
 
     public bool IsConnected => audioClient.ConnectionState == ConnectionState.Connected;
 
@@ -46,22 +43,6 @@ internal sealed class DiscordVoiceSession(
         }
     }
 
-    public async Task WriteOpusAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
-    {
-        await _streamLock.WaitAsync(ct);
-        try
-        {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            using var writeCts = CreateWriteToken(ct);
-            _opusStream ??= audioClient.CreateOpusStream(bufferMillis: 3000);
-            await _opusStream.WriteAsync(data, writeCts.Token);
-        }
-        finally
-        {
-            _streamLock.Release();
-        }
-    }
-
     public async Task FlushAsync(CancellationToken ct)
     {
         await _streamLock.WaitAsync(ct);
@@ -71,9 +52,6 @@ internal sealed class DiscordVoiceSession(
             using var writeCts = CreateWriteToken(ct);
             if (_pcmStream is not null)
                 await _pcmStream.FlushAsync(writeCts.Token);
-
-            if (_opusStream is not null)
-                await _opusStream.FlushAsync(writeCts.Token);
         }
         finally
         {
@@ -146,9 +124,7 @@ internal sealed class DiscordVoiceSession(
     private void DisposeStreams()
     {
         _pcmStream?.Dispose();
-        _opusStream?.Dispose();
         _pcmStream = null;
-        _opusStream = null;
     }
 
     private CancellationTokenSource CreateWriteToken(CancellationToken ct)

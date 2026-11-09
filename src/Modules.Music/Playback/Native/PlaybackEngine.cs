@@ -44,7 +44,7 @@ internal sealed class PlaybackEngine(
             {
                 logger.LogError(ex, "Failed to start playback for guild {GuildId}.", guildId);
                 // Keep this identity until the queued completion is handled. Never recurse into Player.
-                onEnded(new PlaybackEnded(guildId, current.Id));
+                ReportEnded(guildId, current, PlaybackEndReason.Failed, onEnded);
                 return;
             }
 
@@ -66,7 +66,7 @@ internal sealed class PlaybackEngine(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to update playback for guild {GuildId}.", guildId);
-            onEnded(new PlaybackEnded(guildId, current.Id));
+            ReportEnded(guildId, current, PlaybackEndReason.Failed, onEnded);
         }
     }
 
@@ -87,22 +87,38 @@ internal sealed class PlaybackEngine(
 
     private async Task ObserveAsync(GuildId guildId, Session session, Action<PlaybackEnded> onEnded, CancellationToken ct)
     {
+        var reason = PlaybackEndReason.Completed;
         try { await session.Playback!.Completion; }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
         catch (OperationCanceledException)
         {
             logger.LogDebug("Playback session for guild {GuildId} was stopped.", guildId);
+            return;
         }
-        catch (Exception ex) { logger.LogError(ex, "Playback failed for guild {GuildId}.", guildId); }
+        catch (Exception ex)
+        {
+            reason = PlaybackEndReason.Failed;
+            logger.LogError(ex, "Playback failed for guild {GuildId}.", guildId);
+        }
 
         if (!ct.IsCancellationRequested)
-            onEnded(new PlaybackEnded(guildId, session.Id));
+            ReportEnded(guildId, session, reason, onEnded);
+    }
+
+    private static void ReportEnded(GuildId guildId, Session session, PlaybackEndReason reason, Action<PlaybackEnded> onEnded)
+    {
+        if (session.TryReportCompletion())
+            onEnded(new PlaybackEnded(guildId, session.Id, session.QueueItemId, reason));
     }
 
     private sealed class Session(Guid id, Guid queueItemId)
     {
+        private int _completionReported;
+
         public Guid Id { get; } = id;
         public Guid QueueItemId { get; } = queueItemId;
         public IPlaybackInstance? Playback { get; set; }
+
+        public bool TryReportCompletion() => Interlocked.Exchange(ref _completionReported, 1) == 0;
     }
 }

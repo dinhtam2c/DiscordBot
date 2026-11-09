@@ -10,7 +10,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services)
     {
-        services.AddClock();
+        services.AddSingleton<IClock, SystemClock>();
         services.AddDiscord();
         services.AddPersistence();
 

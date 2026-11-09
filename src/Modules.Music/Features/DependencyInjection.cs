@@ -1,24 +1,9 @@
-using Application;
-using Application.Discord.Interactions.Command;
+﻿using Application.Discord.Interactions;
 using Microsoft.Extensions.DependencyInjection;
-using Modules.Music.Features.Clear;
-using Modules.Music.Features.Join;
-using Modules.Music.Features.Leave;
-using Modules.Music.Features.Loop;
-using Modules.Music.Features.Move;
-using Modules.Music.Features.NowPlaying;
-using Modules.Music.Features.Pause;
-using Modules.Music.Features.Play;
-using Modules.Music.Features.PlayNext;
+using Modules.Music.Features.Playback;
 using Modules.Music.Features.Queue;
-using Modules.Music.Features.Remove;
-using Modules.Music.Features.Resume;
-using Modules.Music.Features.Shuffle;
-using Modules.Music.Features.Skip;
-using Modules.Music.Features.Stop;
-using Modules.Music.Features.Volume;
 using Modules.Music.Features.Shortcuts;
-using Modules.Music.Features.EnqueueTracks;
+using Modules.Music.Features.Voice;
 
 namespace Modules.Music.Features;
 
@@ -37,26 +22,11 @@ internal static class DependencyInjection
                 "Every music shortcut needs a description, query, and valid mode.")
             .ValidateOnStart();
         services.AddSingleton<MusicShortcutCatalog>();
-        services.AddSingleton<IInteractionCommandSource>(sp => sp.GetRequiredService<MusicShortcutCatalog>());
-        services.AddScoped<ShortcutInteractionHandler>();
-
-        services.AddInteraction<JoinCommand, JoinHandler>();
-        services.AddInteraction<LeaveCommand, LeaveHandler>();
-        services.AddInteraction<PlayCommand, PlayHandler>();
-        services.AddInteraction<PlayNextCommand, PlayNextHandler>();
-        services.AddInteraction<PauseCommand, PauseHandler>();
-        services.AddInteraction<ResumeCommand, ResumeHandler>();
-        services.AddInteraction<SkipCommand, SkipHandler>();
-        services.AddInteraction<NowPlayingCommand, NowPlayingHandler>();
-        services.AddInteraction<QueueCommand, QueueHandler>();
-        services.AddInteraction<LoopCommand, LoopHandler>();
-        services.AddInteraction<StopCommand, StopHandler>();
-        services.AddInteraction<RemoveCommand, RemoveHandler>();
-        services.AddInteraction<MoveCommand, MoveHandler>();
-        services.AddInteraction<ShuffleCommand, ShuffleHandler>();
-        services.AddInteraction<ClearCommand, ClearHandler>();
-        services.AddInteraction<VolumeCommand, VolumeHandler>();
-
+        services.Configure<DiscordCommandOptions>(options =>
+        {
+            options.Modules.AddRange([typeof(PlaybackCommands), typeof(QueueCommands), typeof(VoiceCommands)]);
+            options.ConfigureModules.Add(ShortcutCommands.RegisterAsync);
+        });
         return services;
     }
 }

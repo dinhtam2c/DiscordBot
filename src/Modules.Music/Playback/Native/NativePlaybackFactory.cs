@@ -7,15 +7,13 @@ namespace Modules.Music.Playback.Native;
 
 internal sealed class NativePlaybackFactory(
     IAudioSourceResolver audioSourceResolver,
-    IAudioTranscoder encoder)
+    IAudioTranscoder transcoder)
     : IPlaybackFactory
 {
     public IPlaybackInstance Start(Track track, Volume volume, IVoiceOutput voiceOutput, CancellationToken ct)
     {
         var source = audioSourceResolver.Resolve(track.Source);
 
-        IPlaybackInstance instance = new NativePlaybackInstance(source, track, volume, encoder, voiceOutput, ct);
-
-        return instance;
+        return new NativePlaybackInstance(source, track, volume, transcoder, voiceOutput, ct);
     }
 }

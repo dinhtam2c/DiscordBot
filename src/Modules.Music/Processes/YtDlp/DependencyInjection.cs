@@ -11,7 +11,7 @@ internal static class DependencyInjection
             .BindConfiguration(YtDlpOptions.SectionName)
             .ValidateOnStart();
 
-        services.AddSingleton<YtDlpJsonRunner>();
+        services.AddSingleton<YtDlpClient>();
 
         return services;
     }
