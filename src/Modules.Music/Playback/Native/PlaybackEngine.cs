@@ -32,7 +32,7 @@ internal sealed class PlaybackEngine(
             _sessions[guildId] = current;
             try
             {
-                logger.LogInformation("Starting playback for guild {GuildId}, Track: {TrackTitle}", guildId, target.Track.Title);
+                logger.LogInformation("Starting playback for guild {GuildId} with track '{TrackTitle}'.", guildId, target.Track.Title);
                 current.Playback = factory.Start(target.Track, target.Volume, voiceOutputs.GetOutput(guildId), ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -92,13 +92,13 @@ internal sealed class PlaybackEngine(
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
         catch (OperationCanceledException)
         {
-            logger.LogDebug("Playback session for guild {GuildId} was stopped.", guildId);
+            logger.LogDebug("Stopped playback for guild {GuildId}.", guildId);
             return;
         }
         catch (Exception ex)
         {
             reason = PlaybackEndReason.Failed;
-            logger.LogError(ex, "Playback failed for guild {GuildId}.", guildId);
+            logger.LogError(ex, "Failed to play audio for guild {GuildId}.", guildId);
         }
 
         if (!ct.IsCancellationRequested)

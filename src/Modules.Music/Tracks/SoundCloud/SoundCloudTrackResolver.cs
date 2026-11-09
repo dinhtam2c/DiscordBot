@@ -23,15 +23,15 @@ internal sealed class SoundCloudTrackResolver(
             || host.EndsWith(".soundcloud.com", StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<IReadOnlyList<Track>> ResolveAsync(string query, CancellationToken ct = default)
+    public async Task<TrackResolutionResult> ResolveAsync(string query, CancellationToken ct = default)
     {
         if (!Uri.TryCreate(query, UriKind.Absolute, out var uri) || !CanResolveUrl(uri))
-            throw new ArgumentException("SoundCloud resolver requires a SoundCloud URL.", nameof(query));
+            throw new ArgumentException("The SoundCloud track resolver requires a SoundCloud URL.", nameof(query));
 
         var json = await ytDlpRunner.RunAsync(
             ["--dump-single-json", "--no-warnings", query],
             ct);
-        return ParseTracks(json, query);
+        return ParseResult(json, query, includePlaylist: true);
     }
 
     public async Task<IReadOnlyList<Track>> SearchAsync(string query, CancellationToken ct = default)
@@ -41,29 +41,35 @@ internal sealed class SoundCloudTrackResolver(
             ["--dump-single-json", "--flat-playlist", "--no-warnings", input],
             ct);
 
-        return ParseTracks(json, fallbackUrl: null);
+        return ParseResult(json, fallbackUrl: null, includePlaylist: false).Tracks;
     }
 
-    private static IReadOnlyList<Track> ParseTracks(string json, string? fallbackUrl)
+    private static TrackResolutionResult ParseResult(string json, string? fallbackUrl, bool includePlaylist)
     {
         var metadata = JsonSerializer.Deserialize<SoundCloudMetadata>(json, JsonOptions)
             ?? throw new InvalidOperationException("Failed to parse SoundCloud metadata from yt-dlp output.");
 
         if (metadata.Entries is not null)
         {
-            return metadata.Entries
+            var tracks = metadata.Entries
                 .Where(entry => entry is not null)
                 .Select(entry => ParseTrack(entry, fallbackUrl))
                 .ToList();
+            var playlist = includePlaylist
+                ? new PlaylistInfo(metadata.Title, metadata.WebpageUrl ?? metadata.OriginalUrl ?? fallbackUrl
+                        ?? throw new InvalidOperationException("SoundCloud playlist metadata does not contain a webpage URL."),
+                    metadata.Uploader, metadata.UploaderUrl)
+                : null;
+            return new TrackResolutionResult(tracks, playlist);
         }
 
-        return [ParseTrack(metadata, fallbackUrl)];
+        return new TrackResolutionResult([ParseTrack(metadata, fallbackUrl)]);
     }
 
     private static Track ParseTrack(SoundCloudMetadata metadata, string? fallbackUrl)
     {
         var sourceUrl = metadata.WebpageUrl ?? metadata.OriginalUrl ?? fallbackUrl
-            ?? throw new InvalidOperationException($"SoundCloud metadata for track {metadata.Id} did not include its webpage URL.");
+            ?? throw new InvalidOperationException($"SoundCloud metadata for track '{metadata.Id}' does not contain a webpage URL.");
 
         var thumbnailUrl = metadata.Thumbnail
             ?? metadata.Thumbnails?.OrderByDescending(thumbnail => thumbnail.Width ?? 0).FirstOrDefault()?.Url
@@ -77,6 +83,8 @@ internal sealed class SoundCloudTrackResolver(
             Duration: TimeSpan.FromSeconds(metadata.Duration ?? 0),
             Source: TrackSource.SoundCloud,
             SourceUrl: sourceUrl,
-            ThumbnailUrl: thumbnailUrl);
+            ThumbnailUrl: thumbnailUrl,
+            UploaderName: metadata.Uploader ?? metadata.Channel,
+            UploaderUrl: metadata.UploaderUrl);
     }
 }

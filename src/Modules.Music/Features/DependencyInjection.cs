@@ -19,7 +19,7 @@ internal static class DependencyInjection
                     && !string.IsNullOrWhiteSpace(entry.Value.Description)
                     && !string.IsNullOrWhiteSpace(entry.Value.Query)
                     && Enum.IsDefined(entry.Value.Mode)),
-                "Every music shortcut needs a description, query, and valid mode.")
+                "Each music shortcut must have a description, a query, and a valid enqueue mode.")
             .ValidateOnStart();
         services.AddSingleton<MusicShortcutCatalog>();
         services.Configure<DiscordCommandOptions>(options =>

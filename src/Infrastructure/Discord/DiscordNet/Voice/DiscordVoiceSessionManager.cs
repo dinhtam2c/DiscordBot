@@ -206,9 +206,9 @@ internal sealed class DiscordVoiceSessionManager(
 
                     logger.LogWarning(
                         ex,
-                        "Voice connection attempt failed for guild {GuildId}, channel {VoiceChannelId}.",
-                        snapshot.GuildId,
-                        requestedChannelId);
+                        "Failed to connect to voice channel {VoiceChannelId} in guild {GuildId}.",
+                        requestedChannelId,
+                        snapshot.GuildId);
 
                     nextAttemptAt = DateTimeOffset.UtcNow + retryDelay;
                     retryDelay = NextRetryDelay(retryDelay);
@@ -220,7 +220,7 @@ internal sealed class DiscordVoiceSessionManager(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Voice worker failed for guild {GuildId}.", state.GuildId);
+            logger.LogError(ex, "Failed to run the voice worker for guild {GuildId}.", state.GuildId);
         }
         finally
         {
@@ -281,7 +281,7 @@ internal sealed class DiscordVoiceSessionManager(
             {
                 logger.LogDebug(
                     ex,
-                    "Discord voice disconnect failed for guild {GuildId}.",
+                    "Failed to disconnect the voice session for guild {GuildId}.",
                     session.GuildId);
             }
         }
@@ -292,7 +292,7 @@ internal sealed class DiscordVoiceSessionManager(
         }
         catch (Exception ex)
         {
-            logger.LogDebug(ex, "Disposing Discord voice client failed for guild {GuildId}.", session.GuildId);
+            logger.LogDebug(ex, "Failed to dispose the voice session for guild {GuildId}.", session.GuildId);
         }
     }
 

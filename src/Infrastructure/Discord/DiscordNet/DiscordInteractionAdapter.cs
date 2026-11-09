@@ -31,7 +31,7 @@ internal sealed class DiscordInteractionAdapter(
         var ct = lifetime.Stopping;
         var stopwatch = Stopwatch.StartNew();
         var commandName = interaction is SocketSlashCommand slash ? slash.CommandName : interaction.Type.ToString();
-        logger.LogDebug("Received interaction: {CommandName}", commandName);
+        logger.LogDebug("Received interaction '{CommandName}'.", commandName);
         try
         {
             ct.ThrowIfCancellationRequested();
@@ -44,15 +44,15 @@ internal sealed class DiscordInteractionAdapter(
             {
                 if (result is ExecuteResult { Exception: { } exception })
                     throw exception;
-                logger.LogWarning("Interaction {CommandName} failed: {Reason}", commandName, result.ErrorReason);
+                logger.LogWarning("Interaction '{CommandName}' failed: {Reason}", commandName, result.ErrorReason);
                 await RespondWithErrorAsync(interaction, result.Error == InteractionCommandError.UnknownCommand
-                    ? "This command is no longer available."
+                    ? "This command is no longer available. Check `/help` for available commands."
                     : result.ErrorReason, ct);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            logger.LogDebug("Interaction {CommandName} cancelled.", commandName);
+            logger.LogDebug("Interaction '{CommandName}' was canceled.", commandName);
         }
         catch (Exception ex)
         {
@@ -61,21 +61,21 @@ internal sealed class DiscordInteractionAdapter(
             if (ex is OperationCanceledException && ct.IsCancellationRequested)
                 return;
 
-            var message = "An unexpected error occurred.";
+            var message = "Something went wrong while processing this command. Please try again.";
             if (ex is UserFriendlyException)
             {
                 message = ex.Message;
-                logger.LogWarning("Interaction {CommandName} failed: {Reason}", commandName, message);
+                logger.LogWarning("Interaction '{CommandName}' failed: {Reason}", commandName, message);
             }
             else
             {
-                logger.LogError(ex, "Error handling interaction {CommandName}.", commandName);
+                logger.LogError(ex, "Failed to handle interaction '{CommandName}'.", commandName);
             }
             await RespondWithErrorAsync(interaction, message, ct);
         }
         finally
         {
-            logger.LogDebug("Handled interaction {CommandName} in {ElapsedMilliseconds} ms",
+            logger.LogDebug("Finished handling interaction '{CommandName}' in {ElapsedMilliseconds} ms.",
                 commandName, stopwatch.ElapsedMilliseconds);
         }
     }
@@ -104,7 +104,7 @@ internal sealed class DiscordInteractionAdapter(
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Could not send interaction error response.");
+            logger.LogError(ex, "Failed to send the interaction error response.");
         }
     }
 }

@@ -22,7 +22,7 @@ internal sealed class YoutubeTrackResolver(
             || host.EndsWith(".youtube-nocookie.com", StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<IReadOnlyList<Track>> ResolveAsync(string query, CancellationToken ct = default)
+    public async Task<TrackResolutionResult> ResolveAsync(string query, CancellationToken ct = default)
     {
         if (!Uri.TryCreate(query, UriKind.Absolute, out var uri))
         {
@@ -37,12 +37,13 @@ internal sealed class YoutubeTrackResolver(
         return await ResolveVideoAsync(query, ct);
     }
 
-    public Task<IReadOnlyList<Track>> SearchAsync(string query, CancellationToken ct = default)
+    public async Task<IReadOnlyList<Track>> SearchAsync(string query, CancellationToken ct = default)
     {
-        return ExecuteAsync(
+        var result = await ExecuteAsync(
             $"ytsearch{options.Value.SearchResultCount}:{query}",
             noPlaylist: true,
             ct);
+        return result.Tracks;
     }
 
     private static bool IsPlaylist(Uri uri)
@@ -62,7 +63,7 @@ internal sealed class YoutubeTrackResolver(
         return true;
     }
 
-    private Task<IReadOnlyList<Track>> SearchFirstAsync(string query, CancellationToken ct)
+    private Task<TrackResolutionResult> SearchFirstAsync(string query, CancellationToken ct)
     {
         return ExecuteAsync(
             $"ytsearch1:{query}",
@@ -70,7 +71,7 @@ internal sealed class YoutubeTrackResolver(
             ct);
     }
 
-    private Task<IReadOnlyList<Track>> ResolveVideoAsync(string url, CancellationToken ct)
+    private Task<TrackResolutionResult> ResolveVideoAsync(string url, CancellationToken ct)
     {
         return ExecuteAsync(
             url,
@@ -78,7 +79,7 @@ internal sealed class YoutubeTrackResolver(
             ct);
     }
 
-    private Task<IReadOnlyList<Track>> ResolvePlaylistAsync(string url, CancellationToken ct)
+    private Task<TrackResolutionResult> ResolvePlaylistAsync(string url, CancellationToken ct)
     {
         return ExecuteAsync(
             url,
@@ -86,7 +87,7 @@ internal sealed class YoutubeTrackResolver(
             ct);
     }
 
-    private async Task<IReadOnlyList<Track>> ExecuteAsync(string input, bool noPlaylist, CancellationToken ct)
+    private async Task<TrackResolutionResult> ExecuteAsync(string input, bool noPlaylist, CancellationToken ct)
     {
         var arguments = new List<string> { "--dump-single-json" };
 
@@ -98,24 +99,29 @@ internal sealed class YoutubeTrackResolver(
         arguments.Add(input);
 
         var stdout = await ytDlpRunner.RunAsync(arguments, ct);
-        return ParseTracks(stdout);
+        return ParseResult(stdout, includePlaylist: !noPlaylist, input);
     }
 
-    private static IReadOnlyList<Track> ParseTracks(string json)
+    private static TrackResolutionResult ParseResult(string json, bool includePlaylist, string input)
     {
         var dto = JsonSerializer.Deserialize<YoutubeMetadata>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-            ?? throw new InvalidOperationException("Failed to parse yt-dlp output.");
+            ?? throw new InvalidOperationException("Failed to parse YouTube metadata from yt-dlp output.");
 
         if (dto.Type == "playlist")
         {
-            return dto.Entries?
+            var tracks = dto.Entries?
                 .Where(e => e is not null)
                 .Select(ParseTrack)
                 .ToList()
                 ?? [];
+            var playlist = includePlaylist
+                ? new PlaylistInfo(dto.Title, dto.WebpageUrl ?? input,
+                    dto.Uploader ?? dto.Channel, dto.UploaderUrl ?? dto.ChannelUrl)
+                : null;
+            return new TrackResolutionResult(tracks, playlist);
         }
 
-        return [ParseTrack(dto)];
+        return new TrackResolutionResult([ParseTrack(dto)]);
     }
 
     private static Track ParseTrack(YoutubeMetadata dto)
@@ -128,6 +134,8 @@ internal sealed class YoutubeTrackResolver(
             Duration: TimeSpan.FromSeconds(dto.Duration ?? 0),
             Source: TrackSource.Youtube,
             SourceUrl: dto.WebpageUrl ?? $"https://www.youtube.com/watch?v={dto.Id}",
-            ThumbnailUrl: dto.Thumbnail ?? string.Empty);
+            ThumbnailUrl: dto.Thumbnail ?? string.Empty,
+            UploaderName: dto.Channel ?? dto.Uploader,
+            UploaderUrl: dto.ChannelUrl ?? dto.UploaderUrl);
     }
 }

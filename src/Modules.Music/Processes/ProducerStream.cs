@@ -37,11 +37,11 @@ internal abstract class ProducerStream : Stream
     public override bool CanRead => !_disposed;
     public override bool CanSeek => false;
     public override bool CanWrite => false;
-    public override long Length => throw new NotSupportedException();
+    public override long Length => throw new NotSupportedException("The producer stream does not support querying its length.");
     public override long Position
     {
-        get => throw new NotSupportedException();
-        set => throw new NotSupportedException();
+        get => throw new NotSupportedException("The producer stream does not support querying its position.");
+        set => throw new NotSupportedException("The producer stream does not support setting its position.");
     }
 
     public override int Read(byte[] buffer, int offset, int count)
@@ -66,9 +66,9 @@ internal abstract class ProducerStream : Stream
     }
 
     public override void Flush() { }
-    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException("The producer stream is read-only.");
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException("The producer stream does not support seeking.");
+    public override void SetLength(long value) => throw new NotSupportedException("The producer stream does not support setting its length.");
 
     public override async ValueTask DisposeAsync()
     {

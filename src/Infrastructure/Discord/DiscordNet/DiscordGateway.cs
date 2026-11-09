@@ -34,7 +34,7 @@ internal sealed class DiscordGateway(
     private async Task StartCoreAsync(CancellationToken ct)
     {
         using var startup = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdown.Token);
-        logger.LogInformation("Starting Discord gateway...");
+        logger.LogInformation("Starting the Discord gateway.");
         await registrar.LoadModulesAsync(startup.Token);
         startup.Token.ThrowIfCancellationRequested();
 
@@ -76,7 +76,7 @@ internal sealed class DiscordGateway(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Could not synchronize Discord commands; retrying in {RetrySeconds} seconds.", retryDelay.TotalSeconds);
+                logger.LogWarning(ex, "Failed to synchronize Discord commands. Retrying in {RetrySeconds} seconds.", retryDelay.TotalSeconds);
             }
             await Task.Delay(retryDelay, ct);
             retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, 30));
@@ -107,7 +107,7 @@ internal sealed class DiscordGateway(
             catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
         }
 
-        logger.LogInformation("Stopping Discord gateway...");
+        logger.LogInformation("Stopping the Discord gateway.");
         try { await client.StopAsync(); }
         finally { client.Log -= Log; }
     }

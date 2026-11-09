@@ -8,7 +8,7 @@ internal class AudioSourceResolver(IEnumerable<IAudioSource> audioSources) : IAu
     {
         if (!_audioSources.TryGetValue(source, out var audioSource))
         {
-            throw new InvalidOperationException($"No audio source found for {source}");
+            throw new InvalidOperationException($"No audio source is registered for '{source}'.");
         }
 
         return audioSource;

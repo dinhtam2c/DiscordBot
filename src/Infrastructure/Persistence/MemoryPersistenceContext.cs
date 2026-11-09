@@ -114,7 +114,7 @@ public sealed class MemoryPersistenceContext
         public void Validate()
         {
             if (store.Read(key)?.Version != Version)
-                throw new InvalidOperationException($"In-memory aggregate '{key}' changed concurrently or already exists.");
+                throw new InvalidOperationException($"Cannot save in-memory aggregate '{key}' because it changed concurrently or already exists.");
         }
 
         public void Prepare() => _snapshot = Deleted ? null : copy(Aggregate!);

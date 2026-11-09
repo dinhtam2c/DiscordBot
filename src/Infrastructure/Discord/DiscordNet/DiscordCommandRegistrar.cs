@@ -34,7 +34,7 @@ internal sealed class DiscordCommandRegistrar(
         var duplicate = commands.SlashCommands.GroupBy(command => command.Name, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault(group => group.Count() > 1);
         if (duplicate is not null)
-            throw new InvalidOperationException($"More than one application command is named '{duplicate.Key}'.");
+            throw new InvalidOperationException($"Application command '{duplicate.Key}' is registered more than once.");
     }
 
     public async Task SynchronizeAsync(CancellationToken ct)
@@ -50,7 +50,7 @@ internal sealed class DiscordCommandRegistrar(
             {
                 ct.ThrowIfCancellationRequested();
                 await commands.RegisterCommandsToGuildAsync(guild.Id);
-                logger.LogInformation("Reconciled {CommandCount} guild application commands for guild {GuildId}.", desired.Length, guild.Id);
+                logger.LogInformation("Updated {CommandCount} application commands for guild {GuildId}.", desired.Length, guild.Id);
             }
         }
         else
@@ -60,7 +60,7 @@ internal sealed class DiscordCommandRegistrar(
             {
                 ct.ThrowIfCancellationRequested();
                 await commands.RegisterCommandsGloballyAsync();
-                logger.LogInformation("Reconciled {CommandCount} global application commands.", desired.Length);
+                logger.LogInformation("Updated {CommandCount} global application commands.", desired.Length);
             }
         }
     }

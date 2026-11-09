@@ -22,6 +22,9 @@ internal sealed class SoundCloudMetadata
     [JsonPropertyName("uploader")]
     public string? Uploader { get; init; }
 
+    [JsonPropertyName("uploader_url")]
+    public string? UploaderUrl { get; init; }
+
     [JsonPropertyName("channel")]
     public string? Channel { get; init; }
 

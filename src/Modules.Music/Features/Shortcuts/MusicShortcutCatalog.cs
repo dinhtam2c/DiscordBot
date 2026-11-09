@@ -35,13 +35,13 @@ internal sealed class MusicShortcutCatalog
         {
             var name = configuredName.Trim().ToLowerInvariant();
             if (!ValidName.IsMatch(name))
-                throw new InvalidOperationException($"Music shortcut name '{configuredName}' is invalid.");
+                throw new InvalidOperationException($"Music shortcut name '{configuredName}' must contain 1 to 32 lowercase letters, digits, hyphens, or underscores.");
             if (string.IsNullOrWhiteSpace(settings.Description) || settings.Description.Length > 100)
                 throw new InvalidOperationException($"Music shortcut '{name}' must have a description between 1 and 100 characters.");
             if (string.IsNullOrWhiteSpace(settings.Query))
                 throw new InvalidOperationException($"Music shortcut '{name}' must have a query.");
             if (!Enum.IsDefined(settings.Mode))
-                throw new InvalidOperationException($"Music shortcut '{name}' has an invalid enqueue mode.");
+                throw new InvalidOperationException($"Music shortcut '{name}' must use enqueue mode 'Queue' or 'Next'.");
 
             if (!shortcuts.TryAdd(name, new MusicShortcut(name, settings.Description.Trim(), settings.Query.Trim(), settings.Mode)))
                 throw new InvalidOperationException($"Music shortcut '{name}' is configured more than once.");

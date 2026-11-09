@@ -76,14 +76,14 @@ internal sealed class PlayerCoordinator(
 
             case EnqueueTracks enqueue:
                 if (enqueue.Tracks.Count == 0)
-                    throw new UserFriendlyException("No tracks to enqueue.");
+                    throw new UserFriendlyException("No tracks were found to add to the queue.");
 
                 player = await GetOrCreateAsync(player, guildId, repository, ct);
                 if (player.VoiceChannelId is null)
                 {
                     var users = services.GetRequiredService<IDiscordUserService>();
                     var channelId = await users.GetUserVoiceChannelIdAsync(guildId, enqueue.RequesterId, ct)
-                        ?? throw new UserFriendlyException("You are not in a voice channel.");
+                        ?? throw new UserFriendlyException("Join a voice channel first.");
                     player.Join(channelId);
                 }
 
@@ -107,7 +107,7 @@ internal sealed class PlayerCoordinator(
 
             case LeaveVoice:
                 if (player is null)
-                    throw new UserFriendlyException("Not in a voice channel for playing music.");
+                    throw new UserFriendlyException("No player is active. Add a track with `/play` first.");
                 player.Leave();
                 await repository.RemoveAsync(guildId, ct);
                 player = null;
@@ -115,7 +115,7 @@ internal sealed class PlayerCoordinator(
 
             default:
                 if (player is null)
-                    throw new UserFriendlyException("Player not found. Start playing music first.");
+                    throw new UserFriendlyException("No player is active. Add a track with `/play` first.");
                 switch (request)
                 {
                     case SkipTrack:
@@ -142,11 +142,11 @@ internal sealed class PlayerCoordinator(
                         break;
                     case MoveTrack move:
                         ValidateIndex(move.Index, player.QueueCount);
-                        ValidateIndex(move.NewIndex, player.QueueCount, "new index");
+                        ValidateIndex(move.NewIndex, player.QueueCount, "destination position");
                         player.MoveInQueue((int)move.Index - 1, (int)move.NewIndex - 1);
                         break;
                     default:
-                        throw new ArgumentOutOfRangeException(nameof(request));
+                        throw new ArgumentOutOfRangeException(nameof(request), "The player request type is not supported.");
                 }
                 break;
         }
@@ -219,7 +219,7 @@ internal sealed class PlayerCoordinator(
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Could not handle playback completion for guild {GuildId}; retrying.", ended.GuildId);
+            logger.LogError(ex, "Failed to handle playback completion for guild {GuildId}. Retrying in 1 second.", ended.GuildId);
             _ = RetryCompletionAsync(pending, ct);
         }
     }
@@ -252,10 +252,12 @@ internal sealed class PlayerCoordinator(
         return player;
     }
 
-    private static void ValidateIndex(long index, int count, string name = "index")
+    private static void ValidateIndex(long index, int count, string name = "queue position")
     {
         if (index < 1 || index > count)
-            throw new UserFriendlyException($"Invalid {name}. Please provide a number between 1 and {count}.");
+            throw new UserFriendlyException(count == 0
+                ? "The queue is empty. Add tracks with `/play` first."
+                : $"Choose a {name} between 1 and {count}.");
     }
 
     public Task StartAsync(CancellationToken ct) => Task.CompletedTask;

@@ -22,7 +22,8 @@ internal sealed record EnqueueTracksInput(
 internal sealed record EnqueueTracksResult(
     IReadOnlyList<Track> Tracks,
     int QueueCount,
-    bool StartsPlayback);
+    bool StartsPlayback,
+    PlaylistInfo? Playlist);
 
 internal sealed class EnqueueTracksUseCase(
     ITrackResolverFactory resolverFactory,
@@ -31,14 +32,15 @@ internal sealed class EnqueueTracksUseCase(
 {
     public async Task<EnqueueTracksResult> ExecuteAsync(EnqueueTracksInput input, CancellationToken ct)
     {
-        var tracks = await resolverFactory.Select(input.Query).ResolveAsync(input.Query, ct);
+        var resolved = await resolverFactory.Select(input.Query).ResolveAsync(input.Query, ct);
+        var tracks = resolved.Tracks;
         if (tracks.Count == 0)
-            throw new UserFriendlyException($"No track found for query: {input.Query}");
+            throw new UserFriendlyException("No tracks found. Try another search or URL.");
 
-        logger.LogInformation("Resolved {TrackCount} tracks for query: {Query}", tracks.Count, input.Query);
+        logger.LogInformation("Resolved {TrackCount} tracks for query '{Query}'.", tracks.Count, input.Query);
         var result = await players.ExecuteAsync(input.GuildId,
             new EnqueueTracks(tracks.ToArray(), input.RequesterId, input.Mode == EnqueueTracksMode.Next), ct);
 
-        return new EnqueueTracksResult(tracks, result.QueueCount, result.StartsPlayback);
+        return new EnqueueTracksResult(tracks, result.QueueCount, result.StartsPlayback, resolved.Playlist);
     }
 }

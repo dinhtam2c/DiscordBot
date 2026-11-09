@@ -19,6 +19,15 @@ internal sealed class YoutubeMetadata
     [JsonPropertyName("channel")]
     public string? Channel { get; init; }
 
+    [JsonPropertyName("channel_url")]
+    public string? ChannelUrl { get; init; }
+
+    [JsonPropertyName("uploader")]
+    public string? Uploader { get; init; }
+
+    [JsonPropertyName("uploader_url")]
+    public string? UploaderUrl { get; init; }
+
     [JsonPropertyName("duration")]
     public int? Duration { get; init; }
 

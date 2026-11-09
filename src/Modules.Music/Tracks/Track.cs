@@ -8,4 +8,6 @@ internal sealed record Track(
     TimeSpan Duration,
     TrackSource Source,
     string SourceUrl,
-    string ThumbnailUrl);
+    string ThumbnailUrl,
+    string? UploaderName = null,
+    string? UploaderUrl = null);

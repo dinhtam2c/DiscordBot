@@ -31,7 +31,7 @@ internal sealed class FfmpegStream(Stream source, string executablePath, ILogger
                 .WithAudioSamplingRate(48000)
                 .WithCustomArgument("-ac 2"))
             .WithLogLevel(FFMpegLogLevel.Error)
-            .NotifyOnError(line => logger.LogDebug("ffmpeg stderr: {Stderr}", line))
+            .NotifyOnError(line => logger.LogDebug("FFmpeg stderr: {Stderr}", line))
             .CancellableThrough(ct)
             .ProcessAsynchronously(throwOnError: true, ffMpegOptions: settings);
     }

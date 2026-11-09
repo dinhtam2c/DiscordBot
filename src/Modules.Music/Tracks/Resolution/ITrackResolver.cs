@@ -6,7 +6,7 @@ internal interface ITrackResolver
 
     bool CanResolveUrl(Uri uri);
 
-    Task<IReadOnlyList<Track>> ResolveAsync(string query, CancellationToken ct = default);
+    Task<TrackResolutionResult> ResolveAsync(string query, CancellationToken ct = default);
 
     Task<IReadOnlyList<Track>> SearchAsync(string query, CancellationToken ct = default);
 }
