@@ -93,7 +93,7 @@ internal sealed class PlayerMailbox(
         {
             try { await action(ct); }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
-            catch (Exception ex) { logger.LogError(ex, "Failed to process playback completion."); }
+            catch (Exception ex) { logger.LogError(ex, "Failed to process a playback notification."); }
         }
 
         public void Cancel() { }

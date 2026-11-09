@@ -1,6 +1,7 @@
 using FFMpegCore;
 using FFMpegCore.Enums;
 using FFMpegCore.Pipes;
+using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 using Modules.Music.Processes;
 
@@ -23,16 +24,44 @@ internal sealed class FfmpegStream(Stream source, string executablePath, ILogger
             BinaryFolder = string.IsNullOrWhiteSpace(directory) ? string.Empty : Path.GetFullPath(directory),
         };
 
-        await FFMpegArguments
-            .FromPipeInput(new StreamPipeSource(source))
-            .OutputToPipe(new StreamPipeSink(output), arguments => arguments
-                .ForceFormat("s16le")
-                .WithAudioCodec("pcm_s16le")
-                .WithAudioSamplingRate(48000)
-                .WithCustomArgument("-ac 2"))
-            .WithLogLevel(FFMpegLogLevel.Error)
-            .NotifyOnStandardError(line => logger.LogDebug("FFmpeg stderr: {Stderr}", line))
-            .CancellableThrough(ct, TimeSpan.Zero)
-            .ProcessAsynchronously(throwOnError: true, ffOptions: settings);
+        var input = new AudioInput(source);
+        try
+        {
+            await FFMpegArguments
+                .FromPipeInput(input)
+                .OutputToPipe(new StreamPipeSink(output), arguments => arguments
+                    .ForceFormat("s16le")
+                    .WithAudioCodec("pcm_s16le")
+                    .WithAudioSamplingRate(48000)
+                    .WithCustomArgument("-ac 2"))
+                .WithLogLevel(FFMpegLogLevel.Error)
+                .NotifyOnStandardError(line => logger.LogDebug("FFmpeg stderr: {Stderr}", line))
+                .CancellableThrough(ct, TimeSpan.Zero)
+                .ProcessAsynchronously(throwOnError: true, ffOptions: settings);
+        }
+        finally
+        {
+            // Preserve source failures even when FFmpeg reports invalid input or accepts partial audio.
+            if (!ct.IsCancellationRequested && input.Error is { } error && error is not OperationCanceledException)
+                ExceptionDispatchInfo.Throw(error);
+        }
+    }
+
+    private sealed class AudioInput(Stream source) : IPipeSource
+    {
+        private readonly StreamPipeSource _input = new(source);
+        public Exception? Error { get; private set; }
+
+        public string GetStreamArguments() => _input.GetStreamArguments();
+
+        public async Task WriteAsync(Stream output, CancellationToken ct)
+        {
+            try { await _input.WriteAsync(output, ct); }
+            catch (Exception ex)
+            {
+                Error = ex;
+                throw;
+            }
+        }
     }
 }

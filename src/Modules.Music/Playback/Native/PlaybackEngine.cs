@@ -12,7 +12,8 @@ internal sealed class PlaybackEngine(
 {
     private readonly ConcurrentDictionary<GuildId, Session> _sessions = new();
 
-    public async Task ApplyAsync(GuildId guildId, PlaybackTarget target, Action<PlaybackEnded> onEnded, CancellationToken ct)
+    public async Task ApplyAsync(GuildId guildId, PlaybackTarget target,
+        Action<PlaybackStarted> onStarted, Action<PlaybackEnded> onEnded, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         _sessions.TryGetValue(guildId, out var current);
@@ -44,10 +45,11 @@ internal sealed class PlaybackEngine(
             {
                 logger.LogError(ex, "Failed to start playback for guild {GuildId}.", guildId);
                 // Keep this identity until the queued completion is handled. Never recurse into Player.
-                ReportEnded(guildId, current, PlaybackEndReason.Failed, onEnded);
+                ReportEnded(guildId, current, PlaybackEndReason.Failed, onEnded, ex);
                 return;
             }
 
+            onStarted(new PlaybackStarted(guildId, current.Id, current.QueueItemId));
             _ = ObserveAsync(guildId, current, onEnded, ct);
         }
 
@@ -66,7 +68,7 @@ internal sealed class PlaybackEngine(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to update playback for guild {GuildId}.", guildId);
-            ReportEnded(guildId, current, PlaybackEndReason.Failed, onEnded);
+            ReportEnded(guildId, current, PlaybackEndReason.Failed, onEnded, ex);
         }
     }
 
@@ -88,6 +90,7 @@ internal sealed class PlaybackEngine(
     private async Task ObserveAsync(GuildId guildId, Session session, Action<PlaybackEnded> onEnded, CancellationToken ct)
     {
         var reason = PlaybackEndReason.Completed;
+        Exception? error = null;
         try { await session.Playback!.Completion; }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { return; }
         catch (OperationCanceledException)
@@ -98,17 +101,19 @@ internal sealed class PlaybackEngine(
         catch (Exception ex)
         {
             reason = PlaybackEndReason.Failed;
+            error = ex;
             logger.LogError(ex, "Failed to play audio for guild {GuildId}.", guildId);
         }
 
         if (!ct.IsCancellationRequested)
-            ReportEnded(guildId, session, reason, onEnded);
+            ReportEnded(guildId, session, reason, onEnded, error);
     }
 
-    private static void ReportEnded(GuildId guildId, Session session, PlaybackEndReason reason, Action<PlaybackEnded> onEnded)
+    private static void ReportEnded(GuildId guildId, Session session, PlaybackEndReason reason,
+        Action<PlaybackEnded> onEnded, Exception? error = null)
     {
         if (session.TryReportCompletion())
-            onEnded(new PlaybackEnded(guildId, session.Id, session.QueueItemId, reason));
+            onEnded(new PlaybackEnded(guildId, session.Id, session.QueueItemId, reason, error));
     }
 
     private sealed class Session(Guid id, Guid queueItemId)

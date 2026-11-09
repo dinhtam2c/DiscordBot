@@ -1,4 +1,5 @@
 using Application.Discord.User;
+using Application.Discord.Messages;
 using Application.Discord.Voice;
 using Discord;
 using Discord.Interactions;
@@ -39,6 +40,8 @@ public static class DependencyInjection
         services.AddSingleton<DiscordCommandRegistrar>();
         // Register before voice and module workers so the gateway stops after their cleanup.
         services.AddHostedService<DiscordGateway>();
+        services.AddSingleton<DiscordMessageQueue>();
+        services.AddHostedService<DiscordMessageWorker>();
 
         services.AddSingleton<IDiscordUserService, DiscordUserService>();
 

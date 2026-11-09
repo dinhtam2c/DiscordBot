@@ -3,6 +3,7 @@ using Application.Abstractions;
 using Application.Discord.Interactions;
 using Discord;
 using Discord.Interactions;
+using Domain.ValueObjects;
 using Modules.Music.Players;
 using Modules.Music.Players.Coordination;
 
@@ -24,7 +25,8 @@ internal sealed class PlaybackCommands(
 
     private async Task EnqueueAsync(string query, EnqueueTracksMode mode)
     {
-        var result = await enqueueTracks.ExecuteAsync(new EnqueueTracksInput(GuildId, UserId, query, mode), Ct);
+        var result = await enqueueTracks.ExecuteAsync(new EnqueueTracksInput(
+            GuildId, UserId, new ChannelId(Context.Channel.Id), Context.Interaction.Id, query, mode), Ct);
         await CompleteAsync(embed: EnqueueTracksResponse.Create(result, mode));
     }
 

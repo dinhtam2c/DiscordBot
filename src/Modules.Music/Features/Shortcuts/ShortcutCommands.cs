@@ -32,7 +32,8 @@ internal static class ShortcutCommands
                     var ct = requestServices.GetRequiredService<IAppLifetime>().Stopping;
                     var useCase = requestServices.GetRequiredService<EnqueueTracksUseCase>();
                     var result = await useCase.ExecuteAsync(
-                        new EnqueueTracksInput(new GuildId(guild.Id), new UserId(context.User.Id), shortcut.Query, shortcut.Mode), ct);
+                        new EnqueueTracksInput(new GuildId(guild.Id), new UserId(context.User.Id),
+                            new ChannelId(context.Channel.Id), context.Interaction.Id, shortcut.Query, shortcut.Mode), ct);
                     await context.Interaction.ModifyOriginalResponseAsync(
                         message => message.Embeds = new[] { EnqueueTracksResponse.Create(result, shortcut.Mode) },
                         new RequestOptions { CancelToken = ct });

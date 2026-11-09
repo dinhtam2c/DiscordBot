@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Modules.Music.Playback;
+using Modules.Music.Features.Notifications;
 
 namespace Modules.Music.Players.Coordination;
 
@@ -13,6 +14,7 @@ internal sealed class PlayerCoordinator(
     IServiceScopeFactory scopes,
     IPlaybackEngine playback,
     IVoiceSessionManager voice,
+    MusicNotifications notifications,
     IAppLifetime lifetime,
     ILogger<PlayerCoordinator> logger) : IHostedService, IAsyncDisposable
 {
@@ -44,7 +46,7 @@ internal sealed class PlayerCoordinator(
             if (!_mailboxes.TryGetValue(guildId, out var mailbox))
             {
                 mailbox = new PlayerMailbox(
-                    () => playback.ApplyAsync(guildId, PlaybackTarget.From(null), _ => { }, CancellationToken.None),
+                    () => playback.ApplyAsync(guildId, PlaybackTarget.From(null), _ => { }, _ => { }, CancellationToken.None),
                     _shutdown.Token, logger);
                 _mailboxes.Add(guildId, mailbox);
                 mailbox.Start();
@@ -168,14 +170,35 @@ internal sealed class PlayerCoordinator(
             if (explicitJoin || previousChannel != channel)
                 await voice.RequestJoinAsync(guildId, channel, ct);
 
-            await playback.ApplyAsync(guildId, PlaybackTarget.From(player), PostPlaybackEnded, ct);
+            await playback.ApplyAsync(guildId, PlaybackTarget.From(player), PostPlaybackStarted, PostPlaybackEnded, ct);
         }
         else
         {
-            await playback.ApplyAsync(guildId, PlaybackTarget.From(null), PostPlaybackEnded, ct);
+            await playback.ApplyAsync(guildId, PlaybackTarget.From(null), PostPlaybackStarted, PostPlaybackEnded, ct);
             if (explicitLeave || previousChannel is not null)
                 await voice.RequestLeaveAsync(guildId, ct);
         }
+    }
+
+    private void PostPlaybackStarted(PlaybackStarted started)
+    {
+        lock (_sync)
+        {
+            if (!_stopping && _mailboxes.TryGetValue(started.GuildId, out var mailbox))
+                mailbox.Post(ct => HandleStartedAsync(started, ct));
+        }
+    }
+
+    private async Task HandleStartedAsync(PlaybackStarted started, CancellationToken ct)
+    {
+        if (!playback.IsCurrent(started.GuildId, started.SessionId))
+            return;
+
+        await using var scope = scopes.CreateAsyncScope();
+        var repository = scope.ServiceProvider.GetRequiredService<IPlayerRepository>();
+        var player = await repository.GetByIdAsync(started.GuildId, ct);
+        if (player?.CurrentQueueItem is { } item && item.Id == started.QueueItemId)
+            notifications.Playing(started.GuildId, item);
     }
 
     private void PostPlaybackEnded(PlaybackEnded ended)
@@ -201,20 +224,26 @@ internal sealed class PlayerCoordinator(
             var player = await repository.GetByIdAsync(ended.GuildId, ct);
             if (!pending.Saved)
             {
-                if (player?.CurrentQueueItem?.Id == ended.QueueItemId)
+                QueueItem? failedItem = null;
+                if (player?.CurrentQueueItem is { } item && item.Id == ended.QueueItemId)
                 {
                     if (ended.Reason == PlaybackEndReason.Failed)
+                    {
+                        failedItem = item;
                         player.Skip();
+                    }
                     else
                         player.FinishCurrentTrack();
                     await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
                 }
                 pending.Saved = true;
+                if (failedItem is not null)
+                    notifications.Failed(ended.GuildId, failedItem, ended.Error);
             }
 
             // Once saved, retries only synchronize the latest stored target. Never advance twice.
             await playback.CompleteAsync(ended.GuildId, ended.SessionId);
-            await playback.ApplyAsync(ended.GuildId, PlaybackTarget.From(player), PostPlaybackEnded, ct);
+            await playback.ApplyAsync(ended.GuildId, PlaybackTarget.From(player), PostPlaybackStarted, PostPlaybackEnded, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)
