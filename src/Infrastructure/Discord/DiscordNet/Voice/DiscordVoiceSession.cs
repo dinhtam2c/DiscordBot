@@ -32,7 +32,7 @@ internal sealed class DiscordVoiceSession(
             _pcmStream ??= audioClient.CreatePCMStream(
                 AudioApplication.Music,
                 bitrate: 128000,
-                bufferMillis: 1000,
+                bufferMillis: 200,
                 packetLoss: 5);
 
             await _pcmStream.WriteAsync(data, writeCts.Token);

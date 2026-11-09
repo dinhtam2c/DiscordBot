@@ -17,8 +17,8 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
     private TaskCompletionSource _resumeSignal = CreateSignaledSignal();
     private bool _isPaused;
 
-    private const int ChunkSize = 3840 * 10; // 200 ms
-    private const int ChannelCapacity = 10;  // ~2 seconds
+    private const int ChunkSize = 3840;      // 20 ms of 48 kHz stereo PCM16
+    private const int ChannelCapacity = 100; // ~2 seconds
 
     private readonly record struct PcmChunk(byte[] Buffer, int Length);
 
