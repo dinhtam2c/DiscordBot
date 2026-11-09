@@ -76,14 +76,14 @@ internal sealed class PlayerCoordinator(
 
             case EnqueueTracks enqueue:
                 if (enqueue.Tracks.Count == 0)
-                    throw new UserFriendlyException("No tracks were found to add to the queue.");
+                    throw new UserFriendlyException("Couldn't find any songs to add. Try another song or link.");
 
                 player = await GetOrCreateAsync(player, guildId, repository, ct);
                 if (player.VoiceChannelId is null)
                 {
                     var users = services.GetRequiredService<IDiscordUserService>();
                     var channelId = await users.GetUserVoiceChannelIdAsync(guildId, enqueue.RequesterId, ct)
-                        ?? throw new UserFriendlyException("Join a voice channel first.");
+                        ?? throw new UserFriendlyException("You're not in a voice channel. Join one first.");
                     player.Join(channelId);
                 }
 
@@ -107,7 +107,7 @@ internal sealed class PlayerCoordinator(
 
             case LeaveVoice:
                 if (player is null)
-                    throw new UserFriendlyException("No player is active. Add a track with `/play` first.");
+                    throw new UserFriendlyException("Use `/play` to start playing music first.");
                 player.Leave();
                 await repository.RemoveAsync(guildId, ct);
                 player = null;
@@ -115,7 +115,7 @@ internal sealed class PlayerCoordinator(
 
             default:
                 if (player is null)
-                    throw new UserFriendlyException("No player is active. Add a track with `/play` first.");
+                    throw new UserFriendlyException("Use `/play` to start playing music first.");
                 switch (request)
                 {
                     case SkipTrack:
@@ -142,7 +142,7 @@ internal sealed class PlayerCoordinator(
                         break;
                     case MoveTrack move:
                         ValidateIndex(move.Index, player.QueueCount);
-                        ValidateIndex(move.NewIndex, player.QueueCount, "destination position");
+                        ValidateIndex(move.NewIndex, player.QueueCount, "new position");
                         player.MoveInQueue((int)move.Index - 1, (int)move.NewIndex - 1);
                         break;
                     default:
@@ -256,8 +256,8 @@ internal sealed class PlayerCoordinator(
     {
         if (index < 1 || index > count)
             throw new UserFriendlyException(count == 0
-                ? "The queue is empty. Add tracks with `/play` first."
-                : $"Choose a {name} between 1 and {count}.");
+                ? "The queue is empty. Add some songs with `/play` first."
+                : $"Enter a {name} from 1 to {count}. Check `/queue` for song numbers.");
     }
 
     public Task StartAsync(CancellationToken ct) => Task.CompletedTask;

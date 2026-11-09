@@ -35,7 +35,7 @@ internal sealed class EnqueueTracksUseCase(
         var resolved = await resolverFactory.Select(input.Query).ResolveAsync(input.Query, ct);
         var tracks = resolved.Tracks;
         if (tracks.Count == 0)
-            throw new UserFriendlyException("No tracks found. Try another search or URL.");
+            throw new UserFriendlyException("Couldn't find any songs. Try another song name or link.");
 
         logger.LogInformation("Resolved {TrackCount} tracks for query '{Query}'.", tracks.Count, input.Query);
         var result = await players.ExecuteAsync(input.GuildId,

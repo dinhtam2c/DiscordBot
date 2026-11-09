@@ -28,7 +28,7 @@ internal static class ShortcutCommands
             {
                 module.AddSlashCommand(shortcut.Name, async (context, _, requestServices, _) =>
                 {
-                    var guild = context.Guild ?? throw new UserFriendlyException("This command can only be used in a server.");
+                    var guild = context.Guild ?? throw new UserFriendlyException("Use this command in a server, not in a DM.");
                     var ct = requestServices.GetRequiredService<IAppLifetime>().Stopping;
                     var useCase = requestServices.GetRequiredService<EnqueueTracksUseCase>();
                     var result = await useCase.ExecuteAsync(

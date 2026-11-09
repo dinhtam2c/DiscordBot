@@ -46,7 +46,7 @@ internal sealed class DiscordInteractionAdapter(
                     throw exception;
                 logger.LogWarning("Interaction '{CommandName}' failed: {Reason}", commandName, result.ErrorReason);
                 await RespondWithErrorAsync(interaction, result.Error == InteractionCommandError.UnknownCommand
-                    ? "This command is no longer available. Check `/help` for available commands."
+                    ? "This command is no longer available. Use `/help` to see what you can do."
                     : result.ErrorReason, ct);
             }
         }
@@ -61,7 +61,7 @@ internal sealed class DiscordInteractionAdapter(
             if (ex is OperationCanceledException && ct.IsCancellationRequested)
                 return;
 
-            var message = "Something went wrong while processing this command. Please try again.";
+            var message = "Something went wrong. Please try again.";
             if (ex is UserFriendlyException)
             {
                 message = ex.Message;

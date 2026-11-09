@@ -11,7 +11,7 @@ public abstract class DiscordCommands(IAppLifetime lifetime) : InteractionModule
 
     protected GuildId GuildId => Context.Guild is { } guild
         ? new GuildId(guild.Id)
-        : throw new UserFriendlyException("This command can only be used in a server.");
+        : throw new UserFriendlyException("Use this command in a server, not in a DM.");
 
     protected UserId UserId => new(Context.User.Id);
 
