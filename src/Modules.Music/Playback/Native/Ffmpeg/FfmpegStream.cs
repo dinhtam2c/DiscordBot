@@ -1,6 +1,8 @@
 using FFMpegCore;
 using FFMpegCore.Enums;
+using FFMpegCore.Exceptions;
 using FFMpegCore.Pipes;
+using System.Buffers;
 using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 using Modules.Music.Processes;
@@ -25,25 +27,93 @@ internal sealed class FfmpegStream(Stream source, string executablePath, ILogger
         };
 
         var input = new AudioInput(source);
+        var pcm = new AudioOutput(output);
+        FFMpegResult? result = null;
         try
         {
-            await FFMpegArguments
-                .FromPipeInput(input)
-                .OutputToPipe(new StreamPipeSink(output), arguments => arguments
-                    .ForceFormat("s16le")
-                    .WithAudioCodec("pcm_s16le")
-                    .WithAudioSamplingRate(48000)
-                    .WithCustomArgument("-ac 2"))
-                .WithLogLevel(FFMpegLogLevel.Error)
-                .NotifyOnStandardError(line => logger.LogDebug("FFmpeg stderr: {Stderr}", line))
-                .CancellableThrough(ct, TimeSpan.Zero)
-                .ProcessAsynchronously(throwOnError: true, ffOptions: settings);
+            try
+            {
+                result = await FFMpegArguments
+                    .FromPipeInput(input)
+                    .OutputToPipe(pcm, arguments => arguments
+                        .ForceFormat("s16le")
+                        .WithAudioCodec("pcm_s16le")
+                        .WithAudioSamplingRate(48000)
+                        .WithCustomArgument("-ac 2"))
+                    .WithLogLevel(FFMpegLogLevel.Error)
+                    .CancellableThrough(ct, TimeSpan.Zero)
+                    .ProcessAsynchronously(throwOnError: true, ffOptions: settings);
+            }
+            catch (FFMpegProcessException ex)
+            {
+                result = ex.Result;
+                throw;
+            }
+            finally
+            {
+                // Preserve pipe failures even when FFmpeg accepts partial audio or masks the cause.
+                if (!ct.IsCancellationRequested)
+                {
+                    if (input.Error is { } sourceError && sourceError is not OperationCanceledException)
+                        ExceptionDispatchInfo.Throw(sourceError);
+                    if (pcm.Error is { } outputError && outputError is not OperationCanceledException)
+                        ExceptionDispatchInfo.Throw(outputError);
+                }
+            }
+
+            ct.ThrowIfCancellationRequested();
+            if (pcm.BytesWritten == 0)
+                throw new InvalidDataException("FFmpeg completed without producing PCM audio.");
+
+            logger.LogDebug("FFmpeg completed with exit code {ExitCode}, producing {PcmBytes} bytes of PCM audio ({PcmDurationSeconds:F3} seconds). Standard error: {Stderr}",
+                result.ExitCode, pcm.BytesWritten, pcm.Duration.TotalSeconds, StandardError(result));
         }
-        finally
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
-            // Preserve source failures even when FFmpeg reports invalid input or accepts partial audio.
-            if (!ct.IsCancellationRequested && input.Error is { } error && error is not OperationCanceledException)
-                ExceptionDispatchInfo.Throw(error);
+            logger.LogDebug("FFmpeg transcoding was canceled after producing {PcmBytes} bytes of PCM audio ({PcmDurationSeconds:F3} seconds).",
+                pcm.BytesWritten, pcm.Duration.TotalSeconds);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to transcode audio. FFmpeg exit code: {ExitCode}. Produced {PcmBytes} bytes of PCM audio ({PcmDurationSeconds:F3} seconds). Standard error: {Stderr}",
+                result?.ExitCode, pcm.BytesWritten, pcm.Duration.TotalSeconds, StandardError(result));
+            throw;
+        }
+    }
+
+    private static string StandardError(FFMpegResult? result)
+    {
+        var stderr = string.Join(Environment.NewLine, result?.StandardError ?? []).Trim();
+        return stderr.Length > 8192 ? stderr[^8192..] : stderr;
+    }
+
+    private sealed class AudioOutput(Stream output) : IPipeSink
+    {
+        public long BytesWritten { get; private set; }
+        public TimeSpan Duration => TimeSpan.FromSeconds(BytesWritten / (48000d * 2 * sizeof(short)));
+        public Exception? Error { get; private set; }
+
+        public string GetStreamArguments() => string.Empty;
+
+        public async Task ReadAsync(Stream input, CancellationToken ct)
+        {
+            var buffer = ArrayPool<byte>.Shared.Rent(81920);
+            try
+            {
+                int read;
+                while ((read = await input.ReadAsync(buffer.AsMemory(), ct)) != 0)
+                {
+                    await output.WriteAsync(buffer.AsMemory(0, read), ct);
+                    BytesWritten += read;
+                }
+            }
+            catch (Exception ex)
+            {
+                Error = ex;
+                throw;
+            }
+            finally { ArrayPool<byte>.Shared.Return(buffer); }
         }
     }
 
