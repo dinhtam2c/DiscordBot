@@ -51,7 +51,7 @@ internal sealed class PlaybackCommands(
     {
         var result = await players.ExecuteAsync(GuildId, new SkipTrack(), Ct);
         await CompleteAsync(result.PreviousItem?.Track is { } skipped
-            ? $"Skipped **{Format.Url(Format.Sanitize(skipped.Title), skipped.SourceUrl)}**."
+            ? $"Skipped **{Format.Url(TrackFormatting.EscapeText(skipped.Title), skipped.SourceUrl)}**."
             : "Nothing is playing right now.");
     }
 
@@ -104,11 +104,11 @@ internal sealed class PlaybackCommands(
         var track = item.Track;
         await CompleteAsync(embed: new EmbedBuilder()
             .WithTitle(player.IsPaused ? "Paused" : "Now playing")
-            .WithDescription($"**{Format.Url(Format.Sanitize(track.Title), track.SourceUrl)}**")
+            .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(track.Title), track.SourceUrl)}**")
             .WithThumbnailUrl(track.ThumbnailUrl)
             .AddField("Artist", TrackFormatting.Artist(track), true)
             .AddField("Duration", TrackFormatting.Duration(track.Duration), true)
-            .AddField("Requested by", Format.Sanitize(requesterName), true)
+            .AddField("Requested by", TrackFormatting.EscapeText(requesterName), true)
             .AddField("Requested at", item.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true)
             .Build());
     }

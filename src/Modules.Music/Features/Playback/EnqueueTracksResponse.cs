@@ -13,7 +13,7 @@ internal static class EnqueueTracksResponse
                 : mode == EnqueueTracksMode.Next ? "#1" : $"#{result.QueueCount}";
             var trackEmbed = new EmbedBuilder()
                 .WithTitle("Added to queue")
-                .WithDescription($"**{Format.Url(Format.Sanitize(track.Title), track.SourceUrl)}**")
+                .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(track.Title), track.SourceUrl)}**")
                 .WithThumbnailUrl(track.ThumbnailUrl)
                 .AddField("Artist", TrackFormatting.Artist(track), true);
             return trackEmbed
@@ -29,14 +29,18 @@ internal static class EnqueueTracksResponse
             .WithDescription(description);
         if (result.Playlist is { } playlist)
         {
-            description = $"Playlist: **{Format.Url(Format.Sanitize(playlist.Title), playlist.SourceUrl)}**\n{description}";
+            var playlistTitle = $"Playlist: **{Format.Url(TrackFormatting.EscapeText(playlist.Title), playlist.SourceUrl)}**";
             if (result.Tracks.Count <= 10)
             {
-                description += "\n\n" + string.Join('\n', result.Tracks.Select(
+                description = playlistTitle + "\n\n" + string.Join('\n', result.Tracks.Select(
                     (track, index) => $"{index + 1}. {TrackFormatting.Entry(track)}"));
             }
+            else
+            {
+                description = $"{playlistTitle}\n{description}";
+            }
             builder.WithDescription(description);
-            var creator = string.IsNullOrWhiteSpace(playlist.CreatorName) ? "Unknown" : Format.Sanitize(playlist.CreatorName);
+            var creator = string.IsNullOrWhiteSpace(playlist.CreatorName) ? "Unknown" : TrackFormatting.EscapeText(playlist.CreatorName);
             builder.AddField("Created by", string.IsNullOrWhiteSpace(playlist.CreatorUrl)
                 ? creator : Format.Url(creator, playlist.CreatorUrl), true);
         }
