@@ -26,7 +26,7 @@ internal sealed class YtDlpStream(Command command, ILogger logger, CancellationT
             }))
             .ExecuteAsync(ct);
         if (result.ExitCode != 0)
-            throw new AudioProcessException("yt-dlp", result.ExitCode, stderr.ToString().Trim());
+            throw YtDlpClient.CreateException(result.ExitCode, stderr.ToString().Trim());
         if (stderr.Length > 0)
             logger.LogDebug("yt-dlp stderr: {Stderr}", stderr.ToString().Trim());
     }
