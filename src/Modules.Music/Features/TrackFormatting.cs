@@ -27,6 +27,16 @@ internal static class TrackFormatting
             ? $"{(int)duration.TotalHours}:{duration:mm\\:ss}"
             : duration.ToString(@"mm\:ss");
 
+    public static string Progress(TimeSpan? position, TimeSpan duration)
+    {
+        var elapsed = position is { } value
+            ? Duration(TimeSpan.FromTicks(Math.Clamp(value.Ticks, 0,
+                duration > TimeSpan.Zero ? duration.Ticks : long.MaxValue)))
+            : "\u2014";
+        var total = duration > TimeSpan.Zero ? Duration(duration) : "Unknown";
+        return $"{elapsed} / {total}";
+    }
+
     public static string Entry(Track track)
         => $"**{Format.Url(EscapeText(track.Title), track.SourceUrl)}** • {Artist(track)} • `{Duration(track.Duration)}`";
 }

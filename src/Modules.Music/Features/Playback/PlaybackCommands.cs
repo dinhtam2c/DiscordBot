@@ -110,7 +110,7 @@ internal sealed class PlaybackCommands(
         });
     }
 
-    [SlashCommand("nowplaying", "See what's playing and who requested it.")]
+    [SlashCommand("nowplaying", "See what's playing, its progress, and who requested it.")]
     public async Task NowPlayingAsync()
     {
         var player = await players.GetSnapshotAsync(GuildId, Ct)
@@ -129,7 +129,7 @@ internal sealed class PlaybackCommands(
             .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(track.Title), track.SourceUrl)}**")
             .WithThumbnailUrl(track.ThumbnailUrl)
             .AddField("Artist", TrackFormatting.Artist(track), true)
-            .AddField("Duration", TrackFormatting.Duration(track.Duration), true)
+            .AddField("Progress", TrackFormatting.Progress(player.PlaybackPosition, track.Duration), true)
             .AddField("Requested by", TrackFormatting.EscapeText(requesterName), true)
             .AddField("Requested at", item.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true)
             .Build());

@@ -75,6 +75,11 @@ internal sealed class PlaybackEngine(
     public bool IsCurrent(GuildId guildId, Guid sessionId)
         => _sessions.TryGetValue(guildId, out var current) && current.Id == sessionId;
 
+    public TimeSpan? GetPosition(GuildId guildId, Guid queueItemId)
+        => _sessions.TryGetValue(guildId, out var current) && current.QueueItemId == queueItemId
+            ? current.Playback?.Position
+            : null;
+
     public async Task CompleteAsync(GuildId guildId, Guid sessionId)
     {
         if (!IsCurrent(guildId, sessionId) || !_sessions.TryRemove(guildId, out var session))

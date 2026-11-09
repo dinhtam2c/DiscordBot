@@ -16,8 +16,10 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
     private readonly object _pauseSync = new();
     private TaskCompletionSource _resumeSignal = CreateSignaledSignal();
     private bool _isPaused;
+    private long _bytesWritten;
 
-    private const int ChunkSize = 3840;      // 20 ms of 48 kHz stereo PCM16
+    private const int PcmBytesPerSecond = 48000 * 2 * sizeof(short);
+    private const int ChunkSize = PcmBytesPerSecond / 50; // 20 ms of 48 kHz stereo PCM16
     private const int ChannelCapacity = 100; // ~2 seconds
 
     private readonly record struct PcmChunk(byte[] Buffer, int Length);
@@ -25,6 +27,8 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
     private readonly Channel<PcmChunk> _channel;
 
     public Task Completion => _playbackTask;
+
+    public TimeSpan Position => TimeSpan.FromSeconds(Interlocked.Read(ref _bytesWritten) / (double)PcmBytesPerSecond);
 
     public NativePlaybackInstance(
         IAudioSource source,
@@ -140,6 +144,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
                     await WaitUntilResumedAsync(ct);
                     ApplyVolume(chunk.Buffer, chunk.Length, Volatile.Read(ref _volume).Value);
                     await voiceOutput.WritePcmAsync(chunk.Buffer.AsMemory(0, chunk.Length), ct);
+                    Interlocked.Add(ref _bytesWritten, chunk.Length);
                 }
                 finally
                 {

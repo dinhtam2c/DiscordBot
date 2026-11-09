@@ -8,6 +8,7 @@ internal interface IPlaybackEngine
     Task ApplyAsync(GuildId guildId, PlaybackTarget target,
         Action<PlaybackStarted> onStarted, Action<PlaybackEnded> onEnded, CancellationToken ct);
     bool IsCurrent(GuildId guildId, Guid sessionId);
+    TimeSpan? GetPosition(GuildId guildId, Guid queueItemId);
     Task CompleteAsync(GuildId guildId, Guid sessionId);
 }
 

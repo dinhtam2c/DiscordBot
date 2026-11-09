@@ -34,7 +34,12 @@ internal sealed class PlayerCoordinator(
             await using var scope = scopes.CreateAsyncScope();
             var repository = scope.ServiceProvider.GetRequiredService<IPlayerRepository>();
             var player = await repository.GetByIdAsync(guildId, token);
-            return player is null ? null : PlayerSnapshot.From(player);
+            return player is null ? null : PlayerSnapshot.From(player) with
+            {
+                PlaybackPosition = player.CurrentQueueItem is { } item
+                    ? playback.GetPosition(guildId, item.Id)
+                    : null,
+            };
         }, ct);
 
     private PlayerMailbox GetMailbox(GuildId guildId)
