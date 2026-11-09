@@ -6,11 +6,15 @@ using Discord;
 using Domain.ValueObjects;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Modules.Music.Playback;
 using Modules.Music.Players;
 
 namespace Modules.Music.Features.Notifications;
 
-internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<MusicNotifications> logger) : BackgroundService
+internal sealed class MusicNotifications(
+    DiscordMessageQueue messages,
+    IPlaybackEngine playback,
+    ILogger<MusicNotifications> logger) : BackgroundService
 {
     private readonly ConcurrentDictionary<GuildId, Destination> _destinations = new();
     private readonly Dictionary<GuildId, SentMessage> _lastPlaying = new();
@@ -34,10 +38,13 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
         => PublishToChannel(guildId, NotificationKind.Started, item, isPaused);
 
     public void Updated(GuildId guildId, QueueItem item, bool isPaused)
-        => Publish(new Notification(guildId, NotificationKind.Updated, Item: item, IsPaused: isPaused));
+        => Publish(new Notification(guildId, NotificationKind.Updated, Item: item, IsPaused: isPaused,
+            Position: playback.GetPosition(guildId, item.Id)));
 
-    public void Ended(GuildId guildId, bool stopped)
-        => Publish(new Notification(guildId, stopped ? NotificationKind.Stopped : NotificationKind.Finished));
+    public void Ended(GuildId guildId, bool stopped, TimeSpan? position = null, bool completed = false)
+        => Publish(new Notification(guildId,
+            stopped ? NotificationKind.Stopped : completed ? NotificationKind.Completed : NotificationKind.Finished,
+            Position: position));
 
     public void Failed(GuildId guildId, QueueItem item, Exception? error)
         => PublishToChannel(guildId, NotificationKind.Failed, item, error: error);
@@ -47,7 +54,8 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
         if (!_destinations.TryGetValue(guildId, out var destination))
             return;
 
-        Publish(new Notification(guildId, kind, destination.ChannelId, item, isPaused, error));
+        Publish(new Notification(guildId, kind, destination.ChannelId, item, isPaused, error,
+            kind == NotificationKind.Started ? playback.GetPosition(guildId, item.Id) : null));
     }
 
     private void Publish(Notification notification)
@@ -59,18 +67,28 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(15));
+        var nextNotification = _pending.Reader.WaitToReadAsync(ct).AsTask();
+        var nextTick = timer.WaitForNextTickAsync(ct).AsTask();
         try
         {
-            await foreach (var notification in _pending.Reader.ReadAllAsync(ct))
+            while (true)
             {
-                try
+                await Task.WhenAny(nextNotification, nextTick);
+                if (nextNotification.IsCompleted)
                 {
-                    await DeliverAsync(notification, ct);
+                    if (!await nextNotification)
+                        break;
+                    while (_pending.Reader.TryRead(out var notification))
+                        await DeliverSafelyAsync(notification, ct);
+                    nextNotification = _pending.Reader.WaitToReadAsync(ct).AsTask();
                 }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
-                catch (Exception ex)
+                if (nextTick.IsCompleted)
                 {
-                    logger.LogError(ex, "Failed to publish a music notification for guild {GuildId}.", notification.GuildId);
+                    if (!await nextTick)
+                        break;
+                    await RefreshProgressAsync(ct);
+                    nextTick = timer.WaitForNextTickAsync(ct).AsTask();
                 }
             }
         }
@@ -82,6 +100,31 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
     {
         _pending.Writer.TryComplete();
         return base.StopAsync(ct);
+    }
+
+    private async Task DeliverSafelyAsync(Notification notification, CancellationToken ct)
+    {
+        try { await DeliverAsync(notification, ct); }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to publish a music notification for guild {GuildId}.", notification.GuildId);
+        }
+    }
+
+    private async Task RefreshProgressAsync(CancellationToken ct)
+    {
+        // The same reader owns both timer updates and notifications, including message replacement.
+        foreach (var (guildId, message) in _lastPlaying.ToArray())
+        {
+            if (!message.IsActive || message.IsPaused)
+                continue;
+            var position = playback.GetPosition(guildId, message.Item.Id);
+            if (position is null || position == message.Position)
+                continue;
+            await DeliverSafelyAsync(new Notification(guildId, NotificationKind.Updated,
+                Item: message.Item, Position: position), ct);
+        }
     }
 
     private async Task DeliverAsync(Notification notification, CancellationToken ct)
@@ -109,10 +152,15 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
             case NotificationKind.Updated:
                 if (previous is null || previous.Item.Id != notification.Item!.Id)
                     return;
+                _lastPlaying[notification.GuildId] = previous with
+                {
+                    IsPaused = notification.IsPaused,
+                    Position = notification.Position,
+                };
                 try
                 {
                     await messages.EditAsync(previous.ChannelId, previous.MessageId,
-                        CreateEmbed(notification.IsPaused ? "Paused" : "Now playing", notification.Item).Build(),
+                        CreatePlayingEmbed(notification.IsPaused ? "Paused" : "Now playing", notification.Item, notification.Position),
                         CreateControls(notification.Item, notification.IsPaused), ct);
                 }
                 catch (global::Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.UnknownMessage)
@@ -124,12 +172,21 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
 
             case NotificationKind.Stopped:
             case NotificationKind.Finished:
+            case NotificationKind.Completed:
                 if (previous is null)
                     return;
+                var finalPosition = notification.Position ?? previous.Position;
+                var duration = previous.Item.Track.Duration;
+                // Metadata and decoded duration may differ within the display's one-second precision.
+                if (notification.Kind == NotificationKind.Completed && duration > TimeSpan.Zero
+                    && finalPosition is { } position && position >= TimeSpan.Zero
+                    && position >= duration - TimeSpan.FromSeconds(1))
+                    finalPosition = duration;
+                _lastPlaying[notification.GuildId] = previous with { IsActive = false, Position = finalPosition };
                 try
                 {
                     await messages.EditAsync(previous.ChannelId, previous.MessageId,
-                        CreateEmbed(notification.Kind == NotificationKind.Stopped ? "Playback stopped" : "Playback finished", previous.Item).Build(),
+                        CreatePlayingEmbed(notification.Kind == NotificationKind.Stopped ? "Playback stopped" : "Playback finished", previous.Item, finalPosition),
                         new ComponentBuilder().Build(), ct);
                 }
                 catch (global::Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.UnknownMessage)
@@ -143,6 +200,7 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
                 await messages.SendAsync(notification.ChannelId!.Value, embed: CreateEmbed("Song skipped", item)
                     .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(item.Track.Title), item.Track.SourceUrl)}**\n"
                         + (FindFriendlyError(notification.Error)?.Message ?? "This song couldn't be played."))
+                    .AddField("Duration", TrackFormatting.Duration(item.Track.Duration), true)
                     .Build(), ct: ct);
                 break;
         }
@@ -152,9 +210,9 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
     {
         var item = notification.Item!;
         var messageId = await messages.SendAsync(channelId,
-            embed: CreateEmbed(notification.IsPaused ? "Paused" : "Now playing", item).Build(),
+            embed: CreatePlayingEmbed(notification.IsPaused ? "Paused" : "Now playing", item, notification.Position),
             ct: ct, components: CreateControls(item, notification.IsPaused));
-        _lastPlaying[notification.GuildId] = new SentMessage(channelId, messageId, item);
+        _lastPlaying[notification.GuildId] = new SentMessage(channelId, messageId, item, notification.IsPaused, true, notification.Position);
     }
 
     private static MessageComponent CreateControls(QueueItem item, bool isPaused)
@@ -171,8 +229,12 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
             .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(item.Track.Title), item.Track.SourceUrl)}**")
             .WithThumbnailUrl(item.Track.ThumbnailUrl)
             .AddField("Artist", TrackFormatting.Artist(item.Track), true)
-            .AddField("Duration", TrackFormatting.Duration(item.Track.Duration), true)
             .AddField("Requested by", $"<@{item.RequesterId.Value}>", true);
+
+    private static Embed CreatePlayingEmbed(string title, QueueItem item, TimeSpan? position)
+        => CreateEmbed(title, item)
+            .AddField("Progress", TrackFormatting.ProgressBar(position, item.Track.Duration))
+            .Build();
 
     private static UserFriendlyException? FindFriendlyError(Exception? error)
         => error switch
@@ -183,8 +245,9 @@ internal sealed class MusicNotifications(DiscordMessageQueue messages, ILogger<M
         };
 
     private sealed record Destination(ChannelId ChannelId, ulong InteractionId);
-    private sealed record SentMessage(ChannelId ChannelId, ulong MessageId, QueueItem Item);
-    private enum NotificationKind { Started, Updated, Stopped, Finished, Failed }
+    private sealed record SentMessage(ChannelId ChannelId, ulong MessageId, QueueItem Item,
+        bool IsPaused, bool IsActive, TimeSpan? Position);
+    private enum NotificationKind { Started, Updated, Stopped, Finished, Completed, Failed }
     private sealed record Notification(GuildId GuildId, NotificationKind Kind, ChannelId? ChannelId = null,
-        QueueItem? Item = null, bool IsPaused = false, Exception? Error = null);
+        QueueItem? Item = null, bool IsPaused = false, Exception? Error = null, TimeSpan? Position = null);
 }

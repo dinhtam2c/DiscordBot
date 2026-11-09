@@ -4,10 +4,11 @@ namespace Modules.Music.Playback;
 
 internal interface IPlaybackEngine
 {
-    // Calls for the same guild are serialized by its PlayerMailbox.
+    // State-changing calls for the same guild are serialized by its PlayerMailbox.
     Task ApplyAsync(GuildId guildId, PlaybackTarget target,
         Action<PlaybackStarted> onStarted, Action<PlaybackEnded> onEnded, CancellationToken ct);
     bool IsCurrent(GuildId guildId, Guid sessionId);
+    // Read-only progress may also be sampled outside the mailbox, for the expected queue item only.
     TimeSpan? GetPosition(GuildId guildId, Guid queueItemId);
     Task CompleteAsync(GuildId guildId, Guid sessionId);
 }

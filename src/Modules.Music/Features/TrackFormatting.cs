@@ -37,6 +37,19 @@ internal static class TrackFormatting
         return $"{elapsed} / {total}";
     }
 
+    public static string ProgressBar(TimeSpan? position, TimeSpan duration)
+    {
+        if (duration <= TimeSpan.Zero)
+            return position is { } elapsed ? Duration(elapsed < TimeSpan.Zero ? TimeSpan.Zero : elapsed) : "\u2014";
+        if (position is null)
+            return Progress(null, duration);
+
+        const int width = 16;
+        var ratio = Math.Clamp(position.Value.Ticks / (double)duration.Ticks, 0, 1);
+        var marker = (int)(ratio * (width - 1));
+        return $"{new string('\u2501', marker)}\u25CF{new string('\u2500', width - marker - 1)}\n{Progress(position, duration)}";
+    }
+
     public static string Entry(Track track)
         => $"**{Format.Url(EscapeText(track.Title), track.SourceUrl)}** • {Artist(track)} • `{Duration(track.Duration)}`";
 }

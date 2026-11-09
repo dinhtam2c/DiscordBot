@@ -167,11 +167,14 @@ internal sealed class PlayerCoordinator(
             await unitOfWork.SaveChangesAsync(ct);
 
         // Persist first. The mailbox holds the next request until runtime has accepted this target.
+        var endedPosition = previousItem is not null && player?.CurrentQueueItem is null
+            ? playback.GetPosition(guildId, previousItem.Id)
+            : null;
         await ApplyAsync(guildId, player, previousChannel, request is JoinVoice, request is LeaveVoice, ct);
         if (changed && previousItem is not null)
         {
             if (player?.CurrentQueueItem is null)
-                notifications.Ended(guildId, stopped: request is StopPlayback or LeaveVoice);
+                notifications.Ended(guildId, stopped: request is StopPlayback or LeaveVoice, position: endedPosition);
             else if (player.CurrentQueueItem.Id == previousItem.Id && player.IsPaused != wasPaused)
                 notifications.Updated(guildId, player.CurrentQueueItem, player.IsPaused);
         }
@@ -257,7 +260,9 @@ internal sealed class PlayerCoordinator(
                 if (failedItem is not null)
                     notifications.Failed(ended.GuildId, failedItem, ended.Error);
                 if (player?.HasCurrentTrack == false)
-                    notifications.Ended(ended.GuildId, stopped: false);
+                    notifications.Ended(ended.GuildId, stopped: false,
+                        position: playback.GetPosition(ended.GuildId, ended.QueueItemId),
+                        completed: ended.Reason == PlaybackEndReason.Completed);
             }
 
             // Once saved, retries only synchronize the latest stored target. Never advance twice.
