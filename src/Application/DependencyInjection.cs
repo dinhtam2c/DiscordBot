@@ -1,8 +1,6 @@
-﻿using Application.Discord.Interactions.Command;
+using Application.Discord.Interactions.Command;
 using Application.Discord.Interactions.Dispatcher;
 using Application.Discord.Interactions.Handler;
-using Application.Discord.Voice;
-using Application.Event;
 using Microsoft.Extensions.DependencyInjection;
 using System.Reflection;
 
@@ -12,8 +10,6 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
-        services.AddEventModule();
-
         services.AddSingleton<InteractionHandlerResolver>();
         services.AddScoped<InteractionDispatcher>();
 

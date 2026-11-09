@@ -7,6 +7,7 @@ internal static class DependencyInjection
 {
     internal static IServiceCollection AddPersistence(this IServiceCollection services)
     {
+        services.AddSingleton(typeof(InMemoryStore<,>));
         services.AddScoped<MemoryPersistenceContext>();
         services.AddScoped<IUnitOfWork, InMemoryUnitOfWork>();
         return services;
