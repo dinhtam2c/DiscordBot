@@ -15,11 +15,13 @@ public abstract class DiscordCommands(IAppLifetime lifetime) : InteractionModule
 
     protected UserId UserId => new(Context.User.Id);
 
-    // Slash commands are deferred by the gateway adapter before execution.
-    protected Task CompleteAsync(string? text = null, Embed? embed = null)
+    // Slash commands defer a reply; components defer an update to their source message.
+    protected Task CompleteAsync(string? text = null, Embed? embed = null, MessageComponent? components = null)
         => Context.Interaction.ModifyOriginalResponseAsync(message =>
         {
             message.Content = text ?? string.Empty;
             message.Embeds = embed is null ? Array.Empty<Embed>() : [embed];
+            message.Components = components ?? new ComponentBuilder().Build();
+            message.AllowedMentions = AllowedMentions.None;
         }, new RequestOptions { CancelToken = Ct });
 }

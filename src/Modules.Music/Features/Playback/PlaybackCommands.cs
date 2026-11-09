@@ -64,6 +64,26 @@ internal sealed class PlaybackCommands(
         await CompleteAsync("Stopped the music and cleared the queue.");
     }
 
+    [ComponentInteraction("music:pause:*")]
+    public Task PauseButtonAsync(string itemId) => ControlAsync(itemId, new PausePlayback());
+
+    [ComponentInteraction("music:resume:*")]
+    public Task ResumeButtonAsync(string itemId) => ControlAsync(itemId, new ResumePlayback());
+
+    [ComponentInteraction("music:skip:*")]
+    public Task SkipButtonAsync(string itemId) => ControlAsync(itemId, new SkipTrack());
+
+    [ComponentInteraction("music:stop:*")]
+    public Task StopButtonAsync(string itemId) => ControlAsync(itemId, new StopPlayback());
+
+    private Task ControlAsync(string itemId, PlayerRequest request)
+    {
+        if (!Guid.TryParseExact(itemId, "N", out var id))
+            throw new UserFriendlyException("These controls are no longer available. Use `/nowplaying` to see what's playing.");
+
+        return players.ExecuteAsync(GuildId, request, Ct, expectedQueueItemId: id);
+    }
+
     [SlashCommand("volume", "Set the volume from 0 to 100%.")]
     public async Task VolumeAsync([Summary(description: "Volume from 0 (muted) to 100%.")] long level)
     {

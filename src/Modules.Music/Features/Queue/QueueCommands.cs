@@ -1,4 +1,3 @@
-using System.Text;
 using Application.Abstractions;
 using Application.Discord.Interactions;
 using Discord;
@@ -15,30 +14,19 @@ internal sealed class QueueCommands(PlayerCoordinator players, IAppLifetime life
     {
         var player = await players.GetSnapshotAsync(GuildId, Ct)
             ?? throw new UserFriendlyException("Use `/play` to start playing music first.");
-        if (!player.HasCurrentTrack && !player.HasQueue)
-        {
-            await CompleteAsync("The queue is empty.");
-            return;
-        }
+        var response = QueueResponse.Create(player, 0);
+        await CompleteAsync(embed: response.Embed, components: response.Components);
+    }
 
-        var description = new StringBuilder();
-        if (player.CurrentTrack is { } current)
-        {
-            description.AppendLine($"**{(player.IsPaused ? "Paused" : "Now playing")}:** {TrackFormatting.Entry(current)}");
-            description.AppendLine();
-        }
-        if (player.HasQueue)
-        {
-            description.AppendLine("**Up next:**");
-            for (var index = 0; index < player.Queue.Count; index++)
-            {
-                description.AppendLine($"{index + 1}. {TrackFormatting.Entry(player.Queue[index].Track)}");
-            }
-        }
-        await CompleteAsync(embed: new EmbedBuilder()
-            .WithTitle("Queue")
-            .WithDescription(description.ToString().TrimEnd())
-            .Build());
+    [ComponentInteraction("music:queue:*")]
+    public async Task ChangePageAsync(string page)
+    {
+        if (!int.TryParse(page, out var index))
+            throw new UserFriendlyException("This queue page is no longer available. Use `/queue` to open it again.");
+
+        var player = await players.GetSnapshotAsync(GuildId, Ct);
+        var response = QueueResponse.Create(player, index);
+        await CompleteAsync(embed: response.Embed, components: response.Components);
     }
 
     [SlashCommand("clear", "Clear the queue without stopping the current song.")]

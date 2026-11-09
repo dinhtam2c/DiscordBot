@@ -15,13 +15,17 @@ public sealed class DiscordMessageQueue
         });
 
     public Task<ulong> SendAsync(ChannelId channelId, string? text = null, Embed? embed = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default, MessageComponent? components = null)
     {
         if (embed is null)
             ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
-        return Enqueue(new DiscordMessage.Send(channelId, text, embed, ct));
+        return Enqueue(new DiscordMessage.Send(channelId, text, embed, components, ct));
     }
+
+    public Task EditAsync(ChannelId channelId, ulong messageId, Embed embed, MessageComponent components,
+        CancellationToken ct = default)
+        => Enqueue(new DiscordMessage.Edit(channelId, messageId, embed, components, ct));
 
     public Task DeleteAsync(ChannelId channelId, ulong messageId, CancellationToken ct = default)
         => Enqueue(new DiscordMessage.Delete(channelId, messageId, ct));
@@ -47,7 +51,10 @@ public abstract record DiscordMessage(ChannelId ChannelId, CancellationToken Ct)
 {
     public TaskCompletionSource<ulong> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public sealed record Send(ChannelId ChannelId, string? Text, Embed? Embed, CancellationToken Ct)
+    public sealed record Send(ChannelId ChannelId, string? Text, Embed? Embed, MessageComponent? Components, CancellationToken Ct)
+        : DiscordMessage(ChannelId, Ct);
+
+    public sealed record Edit(ChannelId ChannelId, ulong MessageId, Embed Embed, MessageComponent Components, CancellationToken Ct)
         : DiscordMessage(ChannelId, Ct);
 
     public sealed record Delete(ChannelId ChannelId, ulong MessageId, CancellationToken Ct)

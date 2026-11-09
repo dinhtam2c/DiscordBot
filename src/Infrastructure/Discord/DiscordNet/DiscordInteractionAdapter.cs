@@ -30,13 +30,20 @@ internal sealed class DiscordInteractionAdapter(
     {
         var ct = lifetime.Stopping;
         var stopwatch = Stopwatch.StartNew();
-        var commandName = interaction is SocketSlashCommand slash ? slash.CommandName : interaction.Type.ToString();
+        var commandName = interaction switch
+        {
+            SocketSlashCommand slash => slash.CommandName,
+            SocketMessageComponent component => component.Data.CustomId,
+            _ => interaction.Type.ToString(),
+        };
         logger.LogDebug("Received interaction '{CommandName}'.", commandName);
         try
         {
             ct.ThrowIfCancellationRequested();
             if (interaction is SocketSlashCommand)
                 await interaction.DeferAsync(options: new RequestOptions { CancelToken = ct });
+            else if (interaction is SocketMessageComponent component)
+                await component.DeferAsync(options: new RequestOptions { CancelToken = ct });
 
             await using var scope = scopes.CreateAsyncScope();
             var result = await commands.ExecuteCommandAsync(new SocketInteractionContext(client, interaction), scope.ServiceProvider);
@@ -87,7 +94,12 @@ internal sealed class DiscordInteractionAdapter(
             if (interaction is SocketAutocompleteInteraction)
                 return;
             var options = new RequestOptions { CancelToken = ct };
-            if (interaction.HasResponded)
+            if (interaction is SocketMessageComponent && interaction.HasResponded)
+            {
+                // A deferred component points at the shared message. Errors belong to the clicking user.
+                await interaction.FollowupAsync(message, ephemeral: true, allowedMentions: AllowedMentions.None, options: options);
+            }
+            else if (interaction.HasResponded)
             {
                 await interaction.ModifyOriginalResponseAsync(response =>
                 {

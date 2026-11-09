@@ -24,8 +24,9 @@ internal sealed class PlayerCoordinator(
     private bool _stopping;
     private Task? _stopTask;
 
-    public Task<PlayerResult> ExecuteAsync(GuildId guildId, PlayerRequest request, CancellationToken ct)
-        => GetMailbox(guildId).SendAsync(token => HandleAsync(guildId, request, token), ct);
+    public Task<PlayerResult> ExecuteAsync(GuildId guildId, PlayerRequest request, CancellationToken ct,
+        Guid? expectedQueueItemId = null)
+        => GetMailbox(guildId).SendAsync(token => HandleAsync(guildId, request, expectedQueueItemId, token), ct);
 
     public Task<PlayerSnapshot?> GetSnapshotAsync(GuildId guildId, CancellationToken ct)
         => GetMailbox(guildId).SendAsync(async token =>
@@ -56,13 +57,17 @@ internal sealed class PlayerCoordinator(
         }
     }
 
-    private async Task<PlayerResult> HandleAsync(GuildId guildId, PlayerRequest request, CancellationToken ct)
+    private async Task<PlayerResult> HandleAsync(GuildId guildId, PlayerRequest request, Guid? expectedQueueItemId, CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
         var repository = services.GetRequiredService<IPlayerRepository>();
         var unitOfWork = services.GetRequiredService<IUnitOfWork>();
         var player = await repository.GetByIdAsync(guildId, ct);
+        // Validate inside the mailbox, in the same operation that changes the player.
+        if (expectedQueueItemId is { } expected && player?.CurrentQueueItem?.Id != expected)
+            throw new UserFriendlyException("This song is no longer playing. Use the controls on the latest now-playing message.");
+
         var previousItem = player?.CurrentQueueItem;
         var wasPaused = player?.IsPaused ?? false;
         var previousChannel = player?.VoiceChannelId;
@@ -158,6 +163,13 @@ internal sealed class PlayerCoordinator(
 
         // Persist first. The mailbox holds the next request until runtime has accepted this target.
         await ApplyAsync(guildId, player, previousChannel, request is JoinVoice, request is LeaveVoice, ct);
+        if (changed && previousItem is not null)
+        {
+            if (player?.CurrentQueueItem is null)
+                notifications.Ended(guildId, stopped: request is StopPlayback or LeaveVoice);
+            else if (player.CurrentQueueItem.Id == previousItem.Id && player.IsPaused != wasPaused)
+                notifications.Updated(guildId, player.CurrentQueueItem, player.IsPaused);
+        }
         return new PlayerResult(previousItem, wasPaused, player?.QueueCount ?? 0,
             previousItem is null && player?.HasCurrentTrack == true);
     }
@@ -198,7 +210,7 @@ internal sealed class PlayerCoordinator(
         var repository = scope.ServiceProvider.GetRequiredService<IPlayerRepository>();
         var player = await repository.GetByIdAsync(started.GuildId, ct);
         if (player?.CurrentQueueItem is { } item && item.Id == started.QueueItemId)
-            notifications.Playing(started.GuildId, item);
+            notifications.Playing(started.GuildId, item, player.IsPaused);
     }
 
     private void PostPlaybackEnded(PlaybackEnded ended)
@@ -239,6 +251,8 @@ internal sealed class PlayerCoordinator(
                 pending.Saved = true;
                 if (failedItem is not null)
                     notifications.Failed(ended.GuildId, failedItem, ended.Error);
+                if (player?.HasCurrentTrack == false)
+                    notifications.Ended(ended.GuildId, stopped: false);
             }
 
             // Once saved, retries only synchronize the latest stored target. Never advance twice.
