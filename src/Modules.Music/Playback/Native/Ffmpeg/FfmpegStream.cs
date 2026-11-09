@@ -1,4 +1,4 @@
-﻿using FFMpegCore;
+using FFMpegCore;
 using FFMpegCore.Enums;
 using FFMpegCore.Pipes;
 using Microsoft.Extensions.Logging;
@@ -31,8 +31,8 @@ internal sealed class FfmpegStream(Stream source, string executablePath, ILogger
                 .WithAudioSamplingRate(48000)
                 .WithCustomArgument("-ac 2"))
             .WithLogLevel(FFMpegLogLevel.Error)
-            .NotifyOnError(line => logger.LogDebug("FFmpeg stderr: {Stderr}", line))
-            .CancellableThrough(ct)
-            .ProcessAsynchronously(throwOnError: true, ffMpegOptions: settings);
+            .NotifyOnStandardError(line => logger.LogDebug("FFmpeg stderr: {Stderr}", line))
+            .CancellableThrough(ct, TimeSpan.Zero)
+            .ProcessAsynchronously(throwOnError: true, ffOptions: settings);
     }
 }
