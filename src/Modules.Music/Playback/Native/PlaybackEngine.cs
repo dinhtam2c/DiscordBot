@@ -76,6 +76,10 @@ internal sealed class PlaybackEngine(
     public bool IsCurrent(GuildId guildId, Guid sessionId)
         => _sessions.TryGetValue(guildId, out var current) && current.Id == sessionId;
 
+    public Guid? GetSessionId(GuildId guildId, Guid queueItemId)
+        => _sessions.TryGetValue(guildId, out var current) && current.QueueItemId == queueItemId
+            && current.Playback is not null ? current.Id : null;
+
     public async Task SeekAsync(GuildId guildId, PlaybackTarget target, TimeSpan position,
         Tracks.AudioSources.ResolvedAudioSource source, Action<PlaybackEnded> onEnded, CancellationToken ct)
     {

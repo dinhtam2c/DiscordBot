@@ -75,9 +75,6 @@ internal sealed class DiscordVoiceSession(
     }
 
     public async ValueTask DisposeAsync()
-        => await DisposeAsync(disposeAudioClient: true);
-
-    public async ValueTask DisposeAsync(bool disposeAudioClient)
     {
         CancelPendingWrites();
         await _streamLock.WaitAsync();
@@ -91,8 +88,7 @@ internal sealed class DiscordVoiceSession(
             _writeLifetime.Dispose();
             audioClient.Connected -= OnConnectedAsync;
             audioClient.Disconnected -= OnDisconnectedAsync;
-            if (disposeAudioClient)
-                audioClient.Dispose();
+            audioClient.Dispose();
         }
         finally
         {

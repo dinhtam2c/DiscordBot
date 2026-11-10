@@ -37,6 +37,7 @@ internal sealed class EnqueueTracksUseCase(
     public async Task<EnqueueTracksResult> ExecuteAsync(EnqueueTracksInput input, CancellationToken ct)
     {
         notifications.SetChannel(input.GuildId, input.TextChannelId, input.InteractionId);
+        var revision = await players.BeginEnqueueAsync(input.GuildId, ct);
         var resolved = await resolverFactory.Select(input.Query).ResolveAsync(input.Query, ct);
         var tracks = resolved.Tracks;
         if (tracks.Count == 0)
@@ -44,7 +45,7 @@ internal sealed class EnqueueTracksUseCase(
 
         logger.LogInformation("Resolved {TrackCount} tracks for query '{Query}'.", tracks.Count, input.Query);
         var result = await players.ExecuteAsync(input.GuildId,
-            new EnqueueTracks(tracks.ToArray(), input.RequesterId, input.Mode == EnqueueTracksMode.Next), ct);
+            new EnqueueTracks(tracks.ToArray(), input.RequesterId, input.Mode == EnqueueTracksMode.Next, revision), ct);
 
         return new EnqueueTracksResult(tracks, result.QueueCount, result.StartsPlayback, resolved.Playlist);
     }

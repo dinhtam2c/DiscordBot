@@ -6,10 +6,13 @@ namespace Modules.Music.Players.Coordination;
 internal abstract record PlayerRequest;
 internal sealed record JoinVoice(ChannelId ChannelId) : PlayerRequest;
 internal sealed record LeaveVoice : PlayerRequest;
-internal sealed record EnqueueTracks(IReadOnlyList<Track> Tracks, UserId RequesterId, bool PlayNext) : PlayerRequest;
+internal sealed record EnqueueTracks(IReadOnlyList<Track> Tracks, UserId RequesterId, bool PlayNext,
+    long? PreparationRevision = null) : PlayerRequest;
 internal sealed record PausePlayback : PlayerRequest;
 internal sealed record ResumePlayback : PlayerRequest;
-internal sealed record SeekPlayback(TimeSpan Position, Tracks.AudioSources.ResolvedAudioSource Source) : PlayerRequest
+internal sealed record SeekPreparation(QueueItem Item, long Revision, Guid SessionId);
+internal sealed record SeekPlayback(TimeSpan Position, Tracks.AudioSources.ResolvedAudioSource Source,
+    SeekPreparation Preparation) : PlayerRequest
 {
     public static void ValidatePosition(TimeSpan position, TimeSpan duration)
     {

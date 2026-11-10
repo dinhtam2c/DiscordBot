@@ -126,7 +126,7 @@ internal sealed class DiscordVoiceSessionManager(
                 {
                     if (currentSession.VoiceChannelId != snapshot.DesiredChannelId)
                     {
-                        await DisconnectSessionAsync(state, currentSession, disconnectFromDiscord: false);
+                        await DisconnectSessionAsync(state, currentSession);
                         nextAttemptAt = DateTimeOffset.MinValue;
                         retryDelay = TimeSpan.FromSeconds(1);
                         continue;
@@ -164,14 +164,13 @@ internal sealed class DiscordVoiceSessionManager(
                     connectedSession = await ConnectAsync(snapshot.GuildId, requestedChannelId);
                     connectedSession.ConnectionChanged += state.Signal;
 
-                    if (!state.IsDesired(requestedChannelId, snapshot.Revision))
+                    if (!state.TrySetSession(connectedSession, snapshot.Revision))
                     {
                         await DisconnectUntrackedSessionAsync(connectedSession);
                         connectedSession = null;
                         continue;
                     }
 
-                    state.SetSession(connectedSession);
                     if (connectedSession.IsConnected)
                     {
                         await state.Output.SetSessionAsync(connectedSession);
@@ -245,17 +244,14 @@ internal sealed class DiscordVoiceSessionManager(
 
     private async Task DisconnectSessionAsync(
         GuildVoiceState state,
-        DiscordVoiceSession session,
-        bool disconnectFromDiscord = true)
+        DiscordVoiceSession session)
     {
         await state.Output.SetSessionAsync(null);
         state.SetSession(null);
         session.ConnectionChanged -= state.Signal;
 
-        if (disconnectFromDiscord)
-            await DisconnectUntrackedSessionAsync(session);
-        else
-            await session.DisposeAsync(disposeAudioClient: false);
+        // Keep cleanup owned by this worker, even if leave supersedes a channel move.
+        await DisconnectUntrackedSessionAsync(session);
     }
 
     private async Task DisconnectUntrackedSessionAsync(DiscordVoiceSession session)
@@ -349,10 +345,16 @@ internal sealed class DiscordVoiceSessionManager(
                 return new Snapshot(GuildId, _desiredChannelId, _session, _revision);
         }
 
-        public bool IsDesired(ChannelId channelId, long revision)
+        public bool TrySetSession(DiscordVoiceSession session, long revision)
         {
             lock (_sync)
-                return _desiredChannelId == channelId && _revision == revision;
+            {
+                if (_desiredChannelId != session.VoiceChannelId || _revision != revision)
+                    return false;
+                _session = session;
+                _faultedSession = null;
+                return true;
+            }
         }
 
         public void SetSession(DiscordVoiceSession? session)

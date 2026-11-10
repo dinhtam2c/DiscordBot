@@ -13,6 +13,10 @@ internal sealed class PlayerMailbox(
 
     public Task Completion { get; private set; } = Task.CompletedTask;
 
+    // Accessed only by work items running on this mailbox.
+    public long EnqueueRevision { get; set; }
+    public long SeekRevision { get; set; }
+
     public void Start() => Completion = Task.Run(RunAsync);
 
     public Task<T> SendAsync<T>(Func<CancellationToken, Task<T>> action, CancellationToken ct)

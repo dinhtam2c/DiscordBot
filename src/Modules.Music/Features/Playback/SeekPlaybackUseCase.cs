@@ -10,16 +10,14 @@ internal sealed class SeekPlaybackUseCase(PlayerCoordinator players, IAudioSourc
 {
     public async Task ExecuteAsync(GuildId guildId, TimeSpan position, CancellationToken ct)
     {
-        var player = await players.GetSnapshotAsync(guildId, ct);
-        var item = player?.CurrentQueueItem
-            ?? throw new UserFriendlyException("Nothing is playing right now.");
-        SeekPlayback.ValidatePosition(position, item.Track.Duration);
+        var preparation = await players.BeginSeekAsync(guildId, position, ct);
+        var item = preparation.Item;
 
         // Resolving a URL must not block pause/skip/stop behind a slow network request.
         var source = await sources.Resolve(item.Track.Source).ResolveAsync(item.Track, ct);
         if (source.IsLive)
             throw new UserFriendlyException("This song doesn't support seeking.");
-        await players.ExecuteAsync(guildId, new SeekPlayback(position, source), ct, expectedQueueItemId: item.Id);
+        await players.ExecuteAsync(guildId, new SeekPlayback(position, source, preparation), ct, expectedQueueItemId: item.Id);
     }
 
     internal static TimeSpan ParsePosition(string value)

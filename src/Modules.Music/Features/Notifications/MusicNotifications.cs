@@ -18,12 +18,11 @@ internal sealed class MusicNotifications(
 {
     private readonly ConcurrentDictionary<GuildId, Destination> _destinations = new();
     private readonly Dictionary<GuildId, SentMessage> _lastPlaying = new();
-    private readonly Channel<Notification> _pending = Channel.CreateBounded<Notification>(
-        new BoundedChannelOptions(256)
+    private readonly Channel<Notification> _pending = Channel.CreateUnbounded<Notification>(
+        new UnboundedChannelOptions
         {
             SingleReader = true,
             AllowSynchronousContinuations = false,
-            FullMode = BoundedChannelFullMode.Wait,
         });
 
     public void SetChannel(GuildId guildId, ChannelId channelId, ulong interactionId)
@@ -61,7 +60,7 @@ internal sealed class MusicNotifications(
     private void Publish(Notification notification)
     {
         if (!_pending.Writer.TryWrite(notification))
-            logger.LogWarning("Failed to queue a music notification for guild {GuildId}. The notification queue is full or closed.",
+            logger.LogWarning("Failed to queue a music notification for guild {GuildId}. The notification queue is closed.",
                 notification.GuildId);
     }
 

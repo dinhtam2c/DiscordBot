@@ -26,7 +26,33 @@ internal sealed class PlayerCoordinator(
 
     public Task<PlayerResult> ExecuteAsync(GuildId guildId, PlayerRequest request, CancellationToken ct,
         Guid? expectedQueueItemId = null)
-        => GetMailbox(guildId).SendAsync(token => HandleAsync(guildId, request, expectedQueueItemId, token), ct);
+    {
+        var mailbox = GetMailbox(guildId);
+        return mailbox.SendAsync(token => HandleAsync(guildId, mailbox, request, expectedQueueItemId, token), ct);
+    }
+
+    public Task<long> BeginEnqueueAsync(GuildId guildId, CancellationToken ct)
+    {
+        var mailbox = GetMailbox(guildId);
+        return mailbox.SendAsync(_ => Task.FromResult(mailbox.EnqueueRevision), ct);
+    }
+
+    public Task<SeekPreparation> BeginSeekAsync(GuildId guildId, TimeSpan position, CancellationToken ct)
+    {
+        var mailbox = GetMailbox(guildId);
+        return mailbox.SendAsync(async token =>
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var repository = scope.ServiceProvider.GetRequiredService<IPlayerRepository>();
+            var player = await repository.GetByIdAsync(guildId, token);
+            var item = player?.CurrentQueueItem
+                ?? throw new UserFriendlyException("Nothing is playing right now.");
+            SeekPlayback.ValidatePosition(position, item.Track.Duration);
+            var sessionId = playback.GetSessionId(guildId, item.Id)
+                ?? throw new UserFriendlyException("Nothing is playing right now.");
+            return new SeekPreparation(item, ++mailbox.SeekRevision, sessionId);
+        }, ct);
+    }
 
     public Task<PlayerSnapshot?> GetSnapshotAsync(GuildId guildId, CancellationToken ct)
         => GetMailbox(guildId).SendAsync(async token =>
@@ -62,7 +88,8 @@ internal sealed class PlayerCoordinator(
         }
     }
 
-    private async Task<PlayerResult> HandleAsync(GuildId guildId, PlayerRequest request, Guid? expectedQueueItemId, CancellationToken ct)
+    private async Task<PlayerResult> HandleAsync(GuildId guildId, PlayerMailbox mailbox, PlayerRequest request,
+        Guid? expectedQueueItemId, CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
         var services = scope.ServiceProvider;
@@ -75,8 +102,13 @@ internal sealed class PlayerCoordinator(
 
         if (request is SeekPlayback seek)
         {
+            if (seek.Preparation.Revision != mailbox.SeekRevision
+                || !playback.IsCurrent(guildId, seek.Preparation.SessionId))
+                throw new UserFriendlyException("This seek request is no longer current. A newer seek or playback change took its place.");
             var item = player?.CurrentQueueItem
                 ?? throw new UserFriendlyException("Nothing is playing right now.");
+            if (item.Id != seek.Preparation.Item.Id)
+                throw new UserFriendlyException("This song is no longer playing.");
             SeekPlayback.ValidatePosition(seek.Position, item.Track.Duration);
             await playback.SeekAsync(guildId, PlaybackTarget.From(player), seek.Position, seek.Source, PostPlaybackEnded, ct);
             notifications.Updated(guildId, item, player!.IsPaused);
@@ -88,6 +120,14 @@ internal sealed class PlayerCoordinator(
         var previousChannel = player?.VoiceChannelId;
         var existed = player is not null;
         var changed = true;
+
+        if (request is EnqueueTracks { PreparationRevision: { } revision } && revision != mailbox.EnqueueRevision)
+            throw new UserFriendlyException("This play request was canceled because the player was stopped or disconnected.");
+        if (request is StopPlayback or LeaveVoice)
+        {
+            mailbox.EnqueueRevision++;
+            mailbox.SeekRevision++;
+        }
 
         switch (request)
         {
@@ -127,11 +167,18 @@ internal sealed class PlayerCoordinator(
                 changed = player?.Resume() ?? false;
                 break;
 
+            case StopPlayback:
+                changed = player is not null;
+                player?.Stop();
+                break;
+
             case LeaveVoice:
-                if (player is null)
-                    throw new UserFriendlyException("Use `/play` to start playing music first.");
-                player.Leave();
-                await repository.RemoveAsync(guildId, ct);
+                changed = player is not null;
+                if (player is not null)
+                {
+                    player.Leave();
+                    await repository.RemoveAsync(guildId, ct);
+                }
                 player = null;
                 break;
 
@@ -143,9 +190,6 @@ internal sealed class PlayerCoordinator(
                     case SkipTrack:
                         changed = player.HasCurrentTrack;
                         if (changed) player.Skip();
-                        break;
-                    case StopPlayback:
-                        player.Stop();
                         break;
                     case SetLoopMode loop:
                         player.SetLoopMode(loop.Mode);

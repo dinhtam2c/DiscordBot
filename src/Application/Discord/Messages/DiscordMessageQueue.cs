@@ -30,15 +30,12 @@ public sealed class DiscordMessageQueue
     public Task DeleteAsync(ChannelId channelId, ulong messageId, CancellationToken ct = default)
         => Enqueue(new DiscordMessage.Delete(channelId, messageId, ct));
 
-    private Task<ulong> Enqueue(DiscordMessage message)
+    private async Task<ulong> Enqueue(DiscordMessage message)
     {
-        if (message.Ct.IsCancellationRequested)
-            return Task.FromCanceled<ulong>(message.Ct);
-
-        if (!_messages.Writer.TryWrite(message))
-            return Task.FromException<ulong>(new InvalidOperationException("The message queue is full or closed."));
-
-        return message.Completion.Task.WaitAsync(message.Ct);
+        // Apply backpressure to senders instead of losing messages when Discord is slow.
+        try { await _messages.Writer.WriteAsync(message, message.Ct); }
+        catch (ChannelClosedException ex) { throw new InvalidOperationException("The message queue is closed.", ex); }
+        return await message.Completion.Task.WaitAsync(message.Ct);
     }
 
     public IAsyncEnumerable<DiscordMessage> ReadAllAsync(CancellationToken ct)
