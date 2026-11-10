@@ -6,3 +6,7 @@
 .vscode/
 *.user
 *.suo
+
+.env
+.env.*
+scripts/specific/

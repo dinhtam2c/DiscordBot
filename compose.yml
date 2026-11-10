@@ -1,0 +1,19 @@
+services:
+  discord-bot:
+    image: discord-bot:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: discord-bot
+    restart: unless-stopped
+    networks:
+      - discord-bot
+    env_file:
+      - .env
+
+networks:
+  discord-bot:
+    name: ${NETWORK_NAME:-discord-bot}
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br-${NETWORK_NAME:-discord-bot}
