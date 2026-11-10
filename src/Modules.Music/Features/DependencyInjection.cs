@@ -30,6 +30,7 @@ internal static class DependencyInjection
         services.Configure<DiscordCommandOptions>(options =>
         {
             options.Modules.AddRange([typeof(PlaybackCommands), typeof(QueueCommands), typeof(VoiceCommands)]);
+            options.EphemeralCommands.UnionWith(["nowplaying", "queue"]);
             options.ConfigureModules.Add(ShortcutCommands.RegisterAsync);
         });
         return services;

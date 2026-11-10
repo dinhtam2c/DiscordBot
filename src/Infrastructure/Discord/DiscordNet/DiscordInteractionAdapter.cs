@@ -1,11 +1,13 @@
 ﻿using System.Diagnostics;
 using System.Reflection;
 using Application.Abstractions;
+using Application.Discord.Interactions;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Infrastructure.Discord.DiscordNet;
 
@@ -14,6 +16,7 @@ internal sealed class DiscordInteractionAdapter(
     InteractionService commands,
     IServiceScopeFactory scopes,
     IAppLifetime lifetime,
+    IOptions<DiscordCommandOptions> options,
     ILogger<DiscordInteractionAdapter> logger)
 {
     public Task HandleAsync(SocketInteraction interaction)
@@ -40,8 +43,9 @@ internal sealed class DiscordInteractionAdapter(
         try
         {
             ct.ThrowIfCancellationRequested();
-            if (interaction is SocketSlashCommand)
-                await interaction.DeferAsync(options: new RequestOptions { CancelToken = ct });
+            if (interaction is SocketSlashCommand slash)
+                await interaction.DeferAsync(ephemeral: options.Value.EphemeralCommands.Contains(slash.CommandName),
+                    options: new RequestOptions { CancelToken = ct });
             else if (interaction is SocketMessageComponent component)
                 await component.DeferAsync(options: new RequestOptions { CancelToken = ct });
 

@@ -138,9 +138,9 @@ internal sealed class PlaybackCommands(
             .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(track.Title), track.SourceUrl)}**")
             .WithThumbnailUrl(track.ThumbnailUrl)
             .AddField("Artist", TrackFormatting.Artist(track), true)
-            .AddField("Progress", TrackFormatting.Progress(player.PlaybackPosition, track.Duration), true)
             .AddField("Requested by", TrackFormatting.EscapeText(requesterName), true)
             .AddField("Requested at", item.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true)
+            .AddField("Progress", TrackFormatting.ProgressBar(player.PlaybackPosition, track.Duration))
             .Build());
     }
 }
