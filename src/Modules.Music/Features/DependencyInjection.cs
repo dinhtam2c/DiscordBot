@@ -14,6 +14,7 @@ internal static class DependencyInjection
     internal static IServiceCollection AddMusicFeatures(this IServiceCollection services)
     {
         services.AddScoped<EnqueueTracksUseCase>();
+        services.AddScoped<SeekPlaybackUseCase>();
         services.AddSingleton<MusicNotifications>();
         services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<MusicNotifications>());
         services.AddOptions<MusicShortcutOptions>()

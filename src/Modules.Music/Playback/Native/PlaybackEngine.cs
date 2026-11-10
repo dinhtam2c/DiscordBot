@@ -34,7 +34,8 @@ internal sealed class PlaybackEngine(
             try
             {
                 logger.LogInformation("Starting playback for guild {GuildId} with track '{TrackTitle}'.", guildId, target.Track.Title);
-                current.Playback = factory.Start(target.Track, target.Volume, voiceOutputs.GetOutput(guildId), ct);
+                current.Playback = factory.Start(target.Track, target.Volume, voiceOutputs.GetOutput(guildId), ct,
+                    isPaused: target.IsPaused);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -74,6 +75,40 @@ internal sealed class PlaybackEngine(
 
     public bool IsCurrent(GuildId guildId, Guid sessionId)
         => _sessions.TryGetValue(guildId, out var current) && current.Id == sessionId;
+
+    public async Task SeekAsync(GuildId guildId, PlaybackTarget target, TimeSpan position,
+        Tracks.AudioSources.ResolvedAudioSource source, Action<PlaybackEnded> onEnded, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (target.Track is null || target.QueueItemId is null)
+            throw new InvalidOperationException("There is no current track to seek.");
+        if (_sessions.TryGetValue(guildId, out var previous))
+            await CompleteAsync(guildId, previous.Id);
+
+        var output = voiceOutputs.GetOutput(guildId);
+        var current = new Session(Guid.NewGuid(), target.QueueItemId.Value);
+        _sessions[guildId] = current;
+        try
+        {
+            await output.ClearAsync(ct);
+            logger.LogInformation("Seeking to {PositionSeconds} seconds in guild {GuildId} with track '{TrackTitle}'.",
+                position.TotalSeconds, guildId, target.Track.Title);
+            current.Playback = factory.Start(target.Track, target.Volume, output, ct,
+                target.IsPaused, position, source);
+            _ = ObserveAsync(guildId, current, onEnded, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _sessions.TryRemove(guildId, out _);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to seek audio for guild {GuildId}.", guildId);
+            ReportEnded(guildId, current, PlaybackEndReason.Failed, onEnded, ex);
+            throw;
+        }
+    }
 
     public TimeSpan? GetPosition(GuildId guildId, Guid queueItemId)
         => _sessions.TryGetValue(guildId, out var current) && current.QueueItemId == queueItemId

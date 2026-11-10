@@ -6,13 +6,21 @@ using System.Buffers;
 using System.Runtime.ExceptionServices;
 using Microsoft.Extensions.Logging;
 using Modules.Music.Processes;
+using Modules.Music.Tracks.AudioSources;
+using CliWrap.Builders;
 
 namespace Modules.Music.Playback.Native.Ffmpeg;
 
-internal sealed class FfmpegStream(Stream source, string executablePath, ILogger logger, CancellationToken ct)
-    : ProducerStream((output, token) => TranscodeAsync(source, output, executablePath, logger, token), ct)
+internal sealed class FfmpegStream : ProducerStream
 {
-    private static async Task TranscodeAsync(Stream source, Stream output, string executablePath, ILogger logger, CancellationToken ct)
+    public FfmpegStream(Stream source, string executablePath, ILogger logger, CancellationToken ct)
+        : base((output, token) => TranscodeAsync(source, null, TimeSpan.Zero, output, executablePath, logger, token), ct) { }
+
+    public FfmpegStream(ResolvedAudioSource source, TimeSpan position, string executablePath, ILogger logger, CancellationToken ct)
+        : base((output, token) => TranscodeAsync(null, source, position, output, executablePath, logger, token), ct) { }
+
+    private static async Task TranscodeAsync(Stream? source, ResolvedAudioSource? media, TimeSpan position,
+        Stream output, string executablePath, ILogger logger, CancellationToken ct)
     {
         var name = Path.GetFileName(executablePath);
         if (!string.Equals(name, "ffmpeg", StringComparison.OrdinalIgnoreCase)
@@ -26,15 +34,27 @@ internal sealed class FfmpegStream(Stream source, string executablePath, ILogger
             BinaryFolder = string.IsNullOrWhiteSpace(directory) ? string.Empty : Path.GetFullPath(directory),
         };
 
-        var input = new AudioInput(source);
+        var input = source is not null ? new AudioInput(source) : null;
         var pcm = new AudioOutput(output);
         FFMpegResult? result = null;
         try
         {
             try
             {
-                result = await FFMpegArguments
-                    .FromPipeInput(input)
+                var arguments = input is not null ? FFMpegArguments.FromPipeInput(input)
+                    : FFMpegArguments.FromUrlInput(media!.Url, options =>
+                    {
+                        options.WithCustomArgument("-reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1 -reconnect_on_http_error 408,429,5xx -reconnect_delay_max 5 -rw_timeout 15000000");
+                        options.WithCustomArgument("-ss " + position.TotalSeconds.ToString("0.#######", System.Globalization.CultureInfo.InvariantCulture));
+                        if (media.Headers.Count > 0)
+                        {
+                            if (media.Headers.Any(header => header.Key.IndexOfAny(['\r', '\n', ':']) >= 0 || header.Value.IndexOfAny(['\r', '\n']) >= 0))
+                                throw new InvalidDataException("The audio source contains invalid HTTP headers.");
+                            var headers = string.Concat(media.Headers.Select(header => $"{header.Key}: {header.Value}\r\n"));
+                            options.WithCustomArgument("-headers " + new ArgumentsBuilder().Add(headers).Build());
+                        }
+                    });
+                result = await arguments
                     .OutputToPipe(pcm, arguments => arguments
                         .ForceFormat("s16le")
                         .WithAudioCodec("pcm_s16le")
@@ -54,7 +74,7 @@ internal sealed class FfmpegStream(Stream source, string executablePath, ILogger
                 // Preserve pipe failures even when FFmpeg accepts partial audio or masks the cause.
                 if (!ct.IsCancellationRequested)
                 {
-                    if (input.Error is { } sourceError && sourceError is not OperationCanceledException)
+                    if (input?.Error is { } sourceError && sourceError is not OperationCanceledException)
                         ExceptionDispatchInfo.Throw(sourceError);
                     if (pcm.Error is { } outputError && outputError is not OperationCanceledException)
                         ExceptionDispatchInfo.Throw(outputError);
@@ -62,6 +82,12 @@ internal sealed class FfmpegStream(Stream source, string executablePath, ILogger
             }
 
             ct.ThrowIfCancellationRequested();
+            if (media is not null)
+            {
+                var error = new AudioProcessException("ffmpeg", result.ExitCode, StandardError(result));
+                if (error.IsTransient)
+                    throw error;
+            }
             if (pcm.BytesWritten == 0)
                 throw new InvalidDataException("FFmpeg completed without producing PCM audio.");
 
@@ -78,6 +104,8 @@ internal sealed class FfmpegStream(Stream source, string executablePath, ILogger
         {
             logger.LogError(ex, "Failed to transcode audio. FFmpeg exit code: {ExitCode}. Produced {PcmBytes} bytes of PCM audio ({PcmDurationSeconds:F3} seconds). Standard error: {Stderr}",
                 result?.ExitCode, pcm.BytesWritten, pcm.Duration.TotalSeconds, StandardError(result));
+            if (media is not null && ex is FFMpegProcessException)
+                throw new AudioProcessException("ffmpeg", result?.ExitCode ?? -1, StandardError(result));
             throw;
         }
     }

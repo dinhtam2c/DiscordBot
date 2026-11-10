@@ -4,6 +4,8 @@ using System.Threading.Channels;
 using Application.Discord.Voice;
 using Modules.Music.Tracks.AudioSources;
 using Modules.Music.Players;
+using Microsoft.Extensions.Logging;
+using Modules.Music.Processes;
 
 namespace Modules.Music.Playback.Native;
 
@@ -17,6 +19,8 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
     private TaskCompletionSource _resumeSignal = CreateSignaledSignal();
     private bool _isPaused;
     private long _bytesWritten;
+    private long _bytesProduced;
+    private readonly TimeSpan _startPosition;
 
     private const int PcmBytesPerSecond = 48000 * 2 * sizeof(short);
     private const int ChunkSize = PcmBytesPerSecond / 50; // 20 ms of 48 kHz stereo PCM16
@@ -28,7 +32,7 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
 
     public Task Completion => _playbackTask;
 
-    public TimeSpan Position => TimeSpan.FromSeconds(Interlocked.Read(ref _bytesWritten) / (double)PcmBytesPerSecond);
+    public TimeSpan Position => _startPosition + TimeSpan.FromSeconds(Interlocked.Read(ref _bytesWritten) / (double)PcmBytesPerSecond);
 
     public NativePlaybackInstance(
         IAudioSource source,
@@ -36,9 +40,17 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
         Volume volume,
         IAudioTranscoder transcoder,
         IVoiceOutput voiceOutput,
-        CancellationToken externalToken)
+        CancellationToken externalToken,
+        bool isPaused = false,
+        TimeSpan startPosition = default,
+        ResolvedAudioSource? resolvedSource = null,
+        ILogger<NativePlaybackInstance>? logger = null)
     {
         _volume = volume;
+        _startPosition = startPosition;
+        _isPaused = isPaused;
+        if (isPaused)
+            _resumeSignal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
         _channel = Channel.CreateBounded<PcmChunk>(new BoundedChannelOptions(ChannelCapacity)
         {
@@ -47,19 +59,17 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
             SingleWriter = true
         });
 
-        _playbackTask = RunAsync(source, track, transcoder, voiceOutput);
+        _playbackTask = RunAsync(source, track, transcoder, voiceOutput, resolvedSource, logger);
     }
 
-    private async Task RunAsync(IAudioSource source, Track track, IAudioTranscoder transcoder, IVoiceOutput voiceOutput)
+    private async Task RunAsync(IAudioSource source, Track track, IAudioTranscoder transcoder, IVoiceOutput voiceOutput,
+        ResolvedAudioSource? resolvedSource, ILogger<NativePlaybackInstance>? logger)
     {
         var ct = _cts.Token;
 
         try
         {
-            await using var sourceStream = await source.OpenAsync(track, ct);
-            await using var pcmStream = await transcoder.OpenPcmStreamAsync(sourceStream, ct);
-
-            var producer = ProduceAsync(pcmStream, ct);
+            var producer = ProduceSourceAsync(source, track, transcoder, resolvedSource, logger, ct);
             var consumer = ConsumeAsync(voiceOutput, ct);
 
             await Task.WhenAll(producer, consumer);
@@ -72,53 +82,44 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
         }
     }
 
-    private async Task ProduceAsync(Stream input, CancellationToken ct)
+    private async Task ProduceSourceAsync(IAudioSource source, Track track, IAudioTranscoder transcoder,
+        ResolvedAudioSource? resolvedSource, ILogger<NativePlaybackInstance>? logger, CancellationToken ct)
     {
-        var trailingBytes = new byte[sizeof(int)];
-        var trailingByteCount = 0;
-
         try
         {
-            while (!ct.IsCancellationRequested)
+            if (resolvedSource is null)
             {
-                byte[]? buffer = ArrayPool<byte>.Shared.Rent(ChunkSize + trailingBytes.Length - 1);
+                await using var sourceStream = await source.OpenAsync(track, ct);
+                await using var pcmStream = await transcoder.OpenPcmStreamAsync(sourceStream, ct);
+                await ProduceAsync(pcmStream, ct);
+                return;
+            }
 
+            var retryDelay = TimeSpan.FromSeconds(1);
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                var previousBytes = _bytesProduced;
                 try
                 {
-                    if (trailingByteCount > 0)
-                        trailingBytes.AsSpan(0, trailingByteCount).CopyTo(buffer);
-
-                    var read = await input.ReadAsync(buffer.AsMemory(trailingByteCount, ChunkSize), ct);
-
-                    if (read == 0)
-                    {
-                        ArrayPool<byte>.Shared.Return(buffer);
-                        buffer = null;
-                        break;
-                    }
-
-                    var length = trailingByteCount + read;
-                    var alignedLength = length - length % sizeof(int);
-                    trailingByteCount = length - alignedLength;
-                    if (trailingByteCount > 0)
-                        buffer.AsSpan(alignedLength, trailingByteCount).CopyTo(trailingBytes);
-
-                    if (alignedLength == 0)
-                    {
-                        ArrayPool<byte>.Shared.Return(buffer);
-                        buffer = null;
-                        continue;
-                    }
-
-                    await _channel.Writer.WriteAsync(new PcmChunk(buffer, alignedLength), ct);
-
-                    buffer = null;
+                    resolvedSource ??= await source.ResolveAsync(track, ct);
+                    if (resolvedSource.IsLive)
+                        throw new Application.Abstractions.UserFriendlyException("This song doesn't support seeking.");
+                    // Retain queued PCM and resume after it, so reconnect does not duplicate buffered audio.
+                    var position = _startPosition + TimeSpan.FromSeconds(_bytesProduced / (double)PcmBytesPerSecond);
+                    await using var pcmStream = await transcoder.OpenPcmStreamAsync(resolvedSource, position, ct);
+                    await ProduceAsync(pcmStream, ct);
+                    return;
                 }
-                catch
+                catch (AudioProcessException ex) when (ex.IsTransient && !ct.IsCancellationRequested)
                 {
-                    if (buffer is not null)
-                        ArrayPool<byte>.Shared.Return(buffer);
-                    throw;
+                    if (_bytesProduced > previousBytes)
+                        retryDelay = TimeSpan.FromSeconds(1);
+                    logger?.LogWarning("Failed to read audio for track '{TrackTitle}'. Refreshing the source in {RetrySeconds} seconds.",
+                        track.Title, retryDelay.TotalSeconds);
+                    resolvedSource = null;
+                    await Task.Delay(retryDelay, ct);
+                    retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, 30));
                 }
             }
         }
@@ -127,9 +128,56 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
             _cts.Cancel();
             throw;
         }
-        finally
+        finally { _channel.Writer.TryComplete(); }
+    }
+
+    private async Task ProduceAsync(Stream input, CancellationToken ct)
+    {
+        var trailingBytes = new byte[sizeof(int)];
+        var trailingByteCount = 0;
+
+        while (!ct.IsCancellationRequested)
         {
-            _channel.Writer.TryComplete();
+            byte[]? buffer = ArrayPool<byte>.Shared.Rent(ChunkSize + trailingBytes.Length - 1);
+
+            try
+            {
+                if (trailingByteCount > 0)
+                    trailingBytes.AsSpan(0, trailingByteCount).CopyTo(buffer);
+
+                var read = await input.ReadAsync(buffer.AsMemory(trailingByteCount, ChunkSize), ct);
+
+                if (read == 0)
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    buffer = null;
+                    break;
+                }
+
+                var length = trailingByteCount + read;
+                var alignedLength = length - length % sizeof(int);
+                trailingByteCount = length - alignedLength;
+                if (trailingByteCount > 0)
+                    buffer.AsSpan(alignedLength, trailingByteCount).CopyTo(trailingBytes);
+
+                if (alignedLength == 0)
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    buffer = null;
+                    continue;
+                }
+
+                await _channel.Writer.WriteAsync(new PcmChunk(buffer, alignedLength), ct);
+                _bytesProduced += alignedLength;
+
+                buffer = null;
+            }
+            catch
+            {
+                if (buffer is not null)
+                    ArrayPool<byte>.Shared.Return(buffer);
+                throw;
+            }
         }
     }
 

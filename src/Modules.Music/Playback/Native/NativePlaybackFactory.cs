@@ -7,13 +7,16 @@ namespace Modules.Music.Playback.Native;
 
 internal sealed class NativePlaybackFactory(
     IAudioSourceResolver audioSourceResolver,
-    IAudioTranscoder transcoder)
+    IAudioTranscoder transcoder,
+    Microsoft.Extensions.Logging.ILogger<NativePlaybackInstance> logger)
     : IPlaybackFactory
 {
-    public IPlaybackInstance Start(Track track, Volume volume, IVoiceOutput voiceOutput, CancellationToken ct)
+    public IPlaybackInstance Start(Track track, Volume volume, IVoiceOutput voiceOutput, CancellationToken ct,
+        bool isPaused = false, TimeSpan startPosition = default, ResolvedAudioSource? source = null)
     {
-        var source = audioSourceResolver.Resolve(track.Source);
+        var audioSource = audioSourceResolver.Resolve(track.Source);
 
-        return new NativePlaybackInstance(source, track, volume, transcoder, voiceOutput, ct);
+        return new NativePlaybackInstance(audioSource, track, volume, transcoder, voiceOutput, ct,
+            isPaused, startPosition, source, logger);
     }
 }

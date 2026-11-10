@@ -12,6 +12,7 @@ namespace Modules.Music.Features.Playback;
 [CommandContextType(InteractionContextType.Guild)]
 internal sealed class PlaybackCommands(
     EnqueueTracksUseCase enqueueTracks,
+    SeekPlaybackUseCase seekPlayback,
     PlayerCoordinator players,
     IAppLifetime lifetime) : DiscordCommands(lifetime)
 {
@@ -55,6 +56,14 @@ internal sealed class PlaybackCommands(
         await CompleteAsync(result.PreviousItem?.Track is { } skipped
             ? $"Skipped **{Format.Url(TrackFormatting.EscapeText(skipped.Title), skipped.SourceUrl)}**."
             : "Nothing is playing right now.");
+    }
+
+    [SlashCommand("seek", "Jump to a position in the current song.")]
+    public async Task SeekAsync([Summary(description: "Position in seconds, mm:ss, or hh:mm:ss, for example 90 or 1:30.")] string position)
+    {
+        var target = SeekPlaybackUseCase.ParsePosition(position);
+        await seekPlayback.ExecuteAsync(GuildId, target, Ct);
+        await CompleteAsync($"Jumped to **{TrackFormatting.Duration(target)}**.");
     }
 
     [SlashCommand("stop", "Stop the music and clear the queue.")]

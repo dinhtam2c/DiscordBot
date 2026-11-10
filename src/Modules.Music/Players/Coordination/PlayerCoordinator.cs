@@ -73,6 +73,16 @@ internal sealed class PlayerCoordinator(
         if (expectedQueueItemId is { } expected && player?.CurrentQueueItem?.Id != expected)
             throw new UserFriendlyException("This song is no longer playing. Use the controls on the latest now-playing message.");
 
+        if (request is SeekPlayback seek)
+        {
+            var item = player?.CurrentQueueItem
+                ?? throw new UserFriendlyException("Nothing is playing right now.");
+            SeekPlayback.ValidatePosition(seek.Position, item.Track.Duration);
+            await playback.SeekAsync(guildId, PlaybackTarget.From(player), seek.Position, seek.Source, PostPlaybackEnded, ct);
+            notifications.Updated(guildId, item, player!.IsPaused);
+            return new PlayerResult(item, player.IsPaused, player.QueueCount, false);
+        }
+
         var previousItem = player?.CurrentQueueItem;
         var wasPaused = player?.IsPaused ?? false;
         var previousChannel = player?.VoiceChannelId;

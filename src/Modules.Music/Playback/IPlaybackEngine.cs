@@ -11,6 +11,9 @@ internal interface IPlaybackEngine
     // Read-only progress may also be sampled outside the mailbox, for the expected queue item only.
     TimeSpan? GetPosition(GuildId guildId, Guid queueItemId);
     Task CompleteAsync(GuildId guildId, Guid sessionId);
+
+    Task SeekAsync(GuildId guildId, PlaybackTarget target, TimeSpan position,
+        Tracks.AudioSources.ResolvedAudioSource source, Action<PlaybackEnded> onEnded, CancellationToken ct);
 }
 
 internal enum PlaybackEndReason { Completed, Failed }

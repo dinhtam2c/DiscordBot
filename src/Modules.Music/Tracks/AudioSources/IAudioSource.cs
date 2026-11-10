@@ -7,4 +7,6 @@ internal interface IAudioSource
     Task<Stream> OpenAsync(Track track, CancellationToken ct);
 
     Task<string> GetUrlAsync(Track track, CancellationToken ct);
+
+    Task<ResolvedAudioSource> ResolveAsync(Track track, CancellationToken ct);
 }

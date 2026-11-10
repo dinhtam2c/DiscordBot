@@ -35,6 +35,25 @@ internal sealed class DiscordVoiceOutput(Action<DiscordVoiceSession> onWriteFail
     public Task FlushAsync(CancellationToken ct)
         => WriteAsync((session, token) => session.FlushAsync(token), ct);
 
+    public async Task ClearAsync(CancellationToken ct)
+    {
+        await _writeLock.WaitAsync(ct);
+        try
+        {
+            DiscordVoiceSession? session;
+            lock (_sync) session = _session;
+            if (session is not null && session.IsConnected)
+            {
+                try { await session.ClearAsync(ct); }
+                catch (ObjectDisposedException)
+                {
+                    // A concurrent voice reconnect has already discarded the old buffer.
+                }
+            }
+        }
+        finally { _writeLock.Release(); }
+    }
+
     private async Task WriteAsync(
         Func<DiscordVoiceSession, CancellationToken, Task> write,
         CancellationToken ct)

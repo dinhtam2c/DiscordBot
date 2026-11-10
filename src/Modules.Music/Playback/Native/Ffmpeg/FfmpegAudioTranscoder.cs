@@ -9,4 +9,7 @@ internal sealed class FfmpegAudioTranscoder(
 {
     public Task<Stream> OpenPcmStreamAsync(Stream source, CancellationToken ct)
         => Task.FromResult<Stream>(new FfmpegStream(source, options.Value.FfmpegPath, logger, ct));
+
+    public Task<Stream> OpenPcmStreamAsync(Tracks.AudioSources.ResolvedAudioSource source, TimeSpan position, CancellationToken ct)
+        => Task.FromResult<Stream>(new FfmpegStream(source, position, options.Value.FfmpegPath, logger, ct));
 }

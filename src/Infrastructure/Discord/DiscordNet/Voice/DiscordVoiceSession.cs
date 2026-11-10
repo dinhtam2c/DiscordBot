@@ -62,6 +62,18 @@ internal sealed class DiscordVoiceSession(
         }
     }
 
+    public async Task ClearAsync(CancellationToken ct)
+    {
+        await _streamLock.WaitAsync(ct);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            // Recreate the output stream; Discord.Net's ClearAsync does not restore buffer slots.
+            DisposeStreams();
+        }
+        finally { _streamLock.Release(); }
+    }
+
     public async ValueTask DisposeAsync()
         => await DisposeAsync(disposeAudioClient: true);
 

@@ -9,6 +9,16 @@ internal sealed record LeaveVoice : PlayerRequest;
 internal sealed record EnqueueTracks(IReadOnlyList<Track> Tracks, UserId RequesterId, bool PlayNext) : PlayerRequest;
 internal sealed record PausePlayback : PlayerRequest;
 internal sealed record ResumePlayback : PlayerRequest;
+internal sealed record SeekPlayback(TimeSpan Position, Tracks.AudioSources.ResolvedAudioSource Source) : PlayerRequest
+{
+    public static void ValidatePosition(TimeSpan position, TimeSpan duration)
+    {
+        if (duration <= TimeSpan.Zero)
+            throw new Application.Abstractions.UserFriendlyException("This song doesn't support seeking.");
+        if (position < TimeSpan.Zero || position >= duration)
+            throw new Application.Abstractions.UserFriendlyException("Choose a position from 0:00 to before the end of this song.");
+    }
+}
 internal sealed record SkipTrack : PlayerRequest;
 internal sealed record StopPlayback : PlayerRequest;
 internal sealed record SetVolume(Volume Volume) : PlayerRequest;
