@@ -63,12 +63,10 @@ internal sealed class DiscordVoiceOutput(Action<DiscordVoiceSession> onWriteFail
                     {
                         throw;
                     }
-                    catch (OperationCanceledException)
-                    {
-                        // The voice session was reset or replaced while this write was in flight.
-                    }
                     catch
                     {
+                        // Cancellation inside Discord.Net also invalidates the stream.
+                        // Only cancellation requested by the caller should stop playback.
                         lock (_sync)
                         {
                             if (ReferenceEquals(_session, session))

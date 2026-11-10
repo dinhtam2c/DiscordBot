@@ -10,15 +10,18 @@ internal sealed class DiscordVoiceSession(
     IAudioClient audioClient) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _streamLock = new(1, 1);
-    private CancellationTokenSource _writeLifetime = new();
+    private readonly CancellationTokenSource _writeLifetime = new();
     private AudioOutStream? _pcmStream;
+    private int _disconnected;
     private bool _disposed;
 
     public GuildId GuildId => guildId;
 
     public ChannelId VoiceChannelId => voiceChannelId;
 
-    public bool IsConnected => audioClient.ConnectionState == ConnectionState.Connected;
+    // A resumed audio client must not revive streams from the previous connection.
+    public bool IsConnected => Volatile.Read(ref _disconnected) == 0
+        && audioClient.ConnectionState == ConnectionState.Connected;
 
     public event Action? ConnectionChanged;
 
@@ -52,24 +55,6 @@ internal sealed class DiscordVoiceSession(
             using var writeCts = CreateWriteToken(ct);
             if (_pcmStream is not null)
                 await _pcmStream.FlushAsync(writeCts.Token);
-        }
-        finally
-        {
-            _streamLock.Release();
-        }
-    }
-
-    public async Task ResetStreamsAsync()
-    {
-        CancelPendingWrites();
-        await _streamLock.WaitAsync();
-        try
-        {
-            if (_disposed)
-                return;
-
-            DisposeStreams();
-            ReplaceWriteLifetime();
         }
         finally
         {
@@ -117,6 +102,8 @@ internal sealed class DiscordVoiceSession(
 
     private Task OnDisconnectedAsync(Exception _)
     {
+        Interlocked.Exchange(ref _disconnected, 1);
+        CancelPendingWrites();
         ConnectionChanged?.Invoke();
         return Task.CompletedTask;
     }
@@ -134,7 +121,7 @@ internal sealed class DiscordVoiceSession(
     {
         try
         {
-            Volatile.Read(ref _writeLifetime).Cancel();
+            _writeLifetime.Cancel();
         }
         catch (ObjectDisposedException)
         {
@@ -145,10 +132,4 @@ internal sealed class DiscordVoiceSession(
         }
     }
 
-    private void ReplaceWriteLifetime()
-    {
-        var previous = _writeLifetime;
-        Volatile.Write(ref _writeLifetime, new CancellationTokenSource());
-        previous.Dispose();
-    }
 }

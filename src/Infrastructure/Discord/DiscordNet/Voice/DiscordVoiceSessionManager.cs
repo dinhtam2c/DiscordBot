@@ -13,7 +13,6 @@ internal sealed class DiscordVoiceSessionManager(
     ILogger<DiscordVoiceSessionManager> logger)
     : IVoiceSessionManager, IVoiceOutputProvider, IHostedService
 {
-    private static readonly TimeSpan ResumeGracePeriod = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan MaximumRetryDelay = TimeSpan.FromSeconds(30);
 
     private readonly ConcurrentDictionary<GuildId, GuildVoiceState> _states = new();
@@ -133,35 +132,21 @@ internal sealed class DiscordVoiceSessionManager(
                         continue;
                     }
 
-                    if (state.IsFaulted(currentSession))
+                    if (state.IsFaulted(currentSession) || !currentSession.IsConnected)
                     {
-                        await DisconnectSessionAsync(state, currentSession, disconnectFromDiscord: false);
+                        logger.LogWarning(
+                            "Voice session is unavailable in guild {GuildId}. Reconnecting to channel {VoiceChannelId} in {RetrySeconds} seconds.",
+                            snapshot.GuildId,
+                            snapshot.DesiredChannelId,
+                            retryDelay.TotalSeconds);
+                        await DisconnectSessionAsync(state, currentSession);
                         nextAttemptAt = DateTimeOffset.UtcNow + retryDelay;
                         retryDelay = NextRetryDelay(retryDelay);
                         continue;
                     }
 
-                    if (currentSession.IsConnected)
-                    {
-                        state.ClearUnavailableSince();
-                        await state.Output.SetSessionAsync(currentSession);
-                        await state.WaitForSignalAsync(ct);
-                        continue;
-                    }
-
-                    await state.Output.SetSessionAsync(null);
-                    await currentSession.ResetStreamsAsync();
-                    var unavailableSince = state.GetOrSetUnavailableSince(DateTimeOffset.UtcNow);
-                    var remainingGrace = ResumeGracePeriod - (DateTimeOffset.UtcNow - unavailableSince);
-                    if (remainingGrace > TimeSpan.Zero)
-                    {
-                        await state.WaitForSignalOrDelayAsync(remainingGrace, ct);
-                        continue;
-                    }
-
-                    await DisconnectSessionAsync(state, currentSession, disconnectFromDiscord: false);
-                    nextAttemptAt = DateTimeOffset.UtcNow + retryDelay;
-                    retryDelay = NextRetryDelay(retryDelay);
+                    await state.Output.SetSessionAsync(currentSession);
+                    await state.WaitForSignalAsync(ct);
                     continue;
                 }
 
@@ -188,7 +173,13 @@ internal sealed class DiscordVoiceSessionManager(
 
                     state.SetSession(connectedSession);
                     if (connectedSession.IsConnected)
+                    {
                         await state.Output.SetSessionAsync(connectedSession);
+                        logger.LogInformation(
+                            "Connected to voice channel {VoiceChannelId} in guild {GuildId}.",
+                            requestedChannelId,
+                            snapshot.GuildId);
+                    }
 
                     retryDelay = TimeSpan.FromSeconds(1);
                     nextAttemptAt = DateTimeOffset.MinValue;
@@ -315,7 +306,6 @@ internal sealed class DiscordVoiceSessionManager(
         private ChannelId? _desiredChannelId;
         private DiscordVoiceSession? _session;
         private DiscordVoiceSession? _faultedSession;
-        private DateTimeOffset? _unavailableSince;
         private long _revision;
 
         public GuildVoiceState(GuildId guildId)
@@ -389,21 +379,6 @@ internal sealed class DiscordVoiceSessionManager(
                     _faultedSession = session;
             }
             Signal();
-        }
-
-        public DateTimeOffset GetOrSetUnavailableSince(DateTimeOffset now)
-        {
-            lock (_sync)
-            {
-                _unavailableSince ??= now;
-                return _unavailableSince.Value;
-            }
-        }
-
-        public void ClearUnavailableSince()
-        {
-            lock (_sync)
-                _unavailableSince = null;
         }
 
         public void Signal()
