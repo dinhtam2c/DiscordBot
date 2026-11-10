@@ -29,7 +29,7 @@ internal sealed class YoutubeMetadata
     public string? UploaderUrl { get; init; }
 
     [JsonPropertyName("duration")]
-    public int? Duration { get; init; }
+    public double? Duration { get; init; }
 
     [JsonPropertyName("webpage_url")]
     public string? WebpageUrl { get; init; }
@@ -37,6 +37,18 @@ internal sealed class YoutubeMetadata
     [JsonPropertyName("thumbnail")]
     public string? Thumbnail { get; init; }
 
+    [JsonPropertyName("thumbnails")]
+    public List<YoutubeThumbnail>? Thumbnails { get; init; }
+
     [JsonPropertyName("entries")]
     public List<YoutubeMetadata>? Entries { get; init; }
+}
+
+internal sealed class YoutubeThumbnail
+{
+    [JsonPropertyName("url")]
+    public string? Url { get; init; }
+
+    [JsonPropertyName("width")]
+    public int? Width { get; init; }
 }

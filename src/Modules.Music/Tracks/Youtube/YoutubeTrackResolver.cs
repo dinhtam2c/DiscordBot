@@ -93,9 +93,9 @@ internal sealed class YoutubeTrackResolver(
 
         if (noPlaylist)
             arguments.Add("--no-playlist");
+        else
+            arguments.Add("--flat-playlist");
 
-        arguments.Add("--extractor-args");
-        arguments.Add("youtube:player_client=android,ios,web");
         arguments.Add(input);
 
         var stdout = await ytDlpRunner.RunAsync(arguments, ct);
@@ -126,15 +126,19 @@ internal sealed class YoutubeTrackResolver(
 
     private static Track ParseTrack(YoutubeMetadata dto)
     {
+        var thumbnailUrl = dto.Thumbnail
+            ?? dto.Thumbnails?.OrderByDescending(thumbnail => thumbnail.Width ?? 0).FirstOrDefault()?.Url
+            ?? string.Empty;
+
         return new Track(
             Id: dto.Id,
             Title: dto.Title,
             Description: dto.Description ?? string.Empty,
-            Artist: dto.Channel ?? string.Empty,
+            Artist: dto.Channel ?? dto.Uploader ?? string.Empty,
             Duration: TimeSpan.FromSeconds(dto.Duration ?? 0),
             Source: TrackSource.Youtube,
             SourceUrl: dto.WebpageUrl ?? $"https://www.youtube.com/watch?v={dto.Id}",
-            ThumbnailUrl: dto.Thumbnail ?? string.Empty,
+            ThumbnailUrl: thumbnailUrl,
             UploaderName: dto.Channel ?? dto.Uploader,
             UploaderUrl: dto.ChannelUrl ?? dto.UploaderUrl);
     }
