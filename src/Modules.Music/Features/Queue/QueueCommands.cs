@@ -18,6 +18,15 @@ internal sealed class QueueCommands(PlayerCoordinator players, IAppLifetime life
         await CompleteAsync(embed: response.Embed, components: response.Components);
     }
 
+    [ComponentInteraction("music:queue-open")]
+    public async Task OpenQueueAsync()
+    {
+        var player = await players.GetSnapshotAsync(GuildId, Ct);
+        var response = QueueResponse.Create(player, 0);
+        await FollowupAsync(embed: response.Embed, components: response.Components,
+            ephemeral: true, allowedMentions: AllowedMentions.None, options: new RequestOptions { CancelToken = Ct });
+    }
+
     [ComponentInteraction("music:queue:*")]
     public async Task ChangePageAsync(string page)
     {

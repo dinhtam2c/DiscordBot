@@ -221,6 +221,7 @@ internal sealed class MusicNotifications(
                 ButtonStyle.Secondary, emote: new Emoji(isPaused ? "\u25B6\uFE0F" : "\u23F8\uFE0F"))
             .WithButton("Skip", $"music:skip:{item.Id:N}", ButtonStyle.Primary, emote: new Emoji("\u23ED\uFE0F"))
             .WithButton("Stop", $"music:stop:{item.Id:N}", ButtonStyle.Danger, emote: new Emoji("\u23F9\uFE0F"))
+            .WithButton("Queue", "music:queue-open", ButtonStyle.Secondary, emote: new Emoji("\uD83D\uDCCB"))
             .Build();
 
     private static EmbedBuilder CreateEmbed(string title, QueueItem item)
