@@ -1,5 +1,6 @@
 ﻿using Application.Abstractions;
 using Application.Discord.Interactions;
+using Application.Discord.Messages;
 using Discord.Interactions;
 
 namespace Modules.Utility;
@@ -12,7 +13,7 @@ internal sealed class UtilityCommands(
     public Task HelpAsync()
     {
         var lines = commands.SlashCommands.OrderBy(command => command.Name)
-            .Select(command => $"- `/{command.Name}` — {command.Description}");
+            .Select(command => $"- `/{command.Name}` — {MessageFormatting.Text(command.Description)}");
         return CompleteAsync("**Available commands**\n" + string.Join('\n', lines));
     }
 

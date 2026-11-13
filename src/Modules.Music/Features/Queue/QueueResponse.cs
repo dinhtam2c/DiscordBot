@@ -1,3 +1,4 @@
+﻿using Application.Discord.Messages;
 using System.Text;
 using Discord;
 using Modules.Music.Players;
@@ -67,7 +68,7 @@ internal static class QueueResponse
             return entry;
 
         var artist = string.IsNullOrWhiteSpace(compact.Artist) ? compact.UploaderName ?? "Unknown" : compact.Artist;
-        return $"**{TrackFormatting.EscapeText(compact.Title)}** • {TrackFormatting.EscapeText(artist)} • `{TrackFormatting.Duration(compact.Duration)}`";
+        return $"**{MessageFormatting.Text(compact.Title)}** • {MessageFormatting.Text(artist)} • `{TrackFormatting.Duration(compact.Duration)}`";
     }
 
     private static string Shorten(string text, int length)

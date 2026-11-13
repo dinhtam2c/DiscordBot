@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Application.Abstractions;
 using Application.Discord.Messages;
@@ -197,7 +197,7 @@ internal sealed class MusicNotifications(
             case NotificationKind.Failed:
                 var item = notification.Item!;
                 await messages.SendAsync(notification.ChannelId!.Value, embed: CreateEmbed("Song skipped", item)
-                    .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(item.Track.Title), item.Track.SourceUrl)}**\n"
+                    .WithDescription($"**{MessageFormatting.Link(item.Track.Title, item.Track.SourceUrl)}**\n"
                         + (FindFriendlyError(notification.Error)?.Message ?? "This song couldn't be played."))
                     .AddField("Duration", TrackFormatting.Duration(item.Track.Duration), true)
                     .Build(), ct: ct);
@@ -226,7 +226,7 @@ internal sealed class MusicNotifications(
     private static EmbedBuilder CreateEmbed(string title, QueueItem item)
         => new EmbedBuilder()
             .WithTitle(title)
-            .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(item.Track.Title), item.Track.SourceUrl)}**")
+            .WithDescription($"**{MessageFormatting.Link(item.Track.Title, item.Track.SourceUrl)}**")
             .WithThumbnailUrl(item.Track.ThumbnailUrl)
             .AddField("Artist", TrackFormatting.Artist(item.Track), true)
             .AddField("Requested by", $"<@{item.RequesterId.Value}>", true);

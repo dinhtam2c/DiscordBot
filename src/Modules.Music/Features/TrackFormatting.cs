@@ -1,25 +1,15 @@
-using Discord;
+﻿using Application.Discord.Messages;
 using Modules.Music.Tracks;
 
 namespace Modules.Music.Features;
 
 internal static class TrackFormatting
 {
-    // Escape Markdown delimiters without escaping ordinary punctuation in display names.
-    public static string EscapeText(string text)
-        => text.Replace("\\", "\\\\")
-            .Replace("*", "\\*")
-            .Replace("_", "\\_")
-            .Replace("~", "\\~")
-            .Replace("`", "\\`")
-            .Replace("[", "\\[")
-            .Replace("]", "\\]");
-
     public static string Artist(Track track)
     {
         var name = string.IsNullOrWhiteSpace(track.Artist) ? track.UploaderName : track.Artist;
-        var artist = string.IsNullOrWhiteSpace(name) ? "Unknown" : EscapeText(name);
-        return string.IsNullOrWhiteSpace(track.UploaderUrl) ? artist : Format.Url(artist, track.UploaderUrl);
+        var artist = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
+        return string.IsNullOrWhiteSpace(track.UploaderUrl) ? MessageFormatting.Text(artist) : MessageFormatting.Link(artist, track.UploaderUrl);
     }
 
     public static string Duration(TimeSpan duration)
@@ -51,5 +41,5 @@ internal static class TrackFormatting
     }
 
     public static string Entry(Track track)
-        => $"**{Format.Url(EscapeText(track.Title), track.SourceUrl)}** • {Artist(track)} • `{Duration(track.Duration)}`";
+        => $"**{MessageFormatting.Link(track.Title, track.SourceUrl)}** • {Artist(track)} • `{Duration(track.Duration)}`";
 }

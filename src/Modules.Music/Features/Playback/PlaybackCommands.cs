@@ -1,3 +1,4 @@
+﻿using Application.Discord.Messages;
 using System.Globalization;
 using Application.Abstractions;
 using Application.Discord.Interactions;
@@ -54,7 +55,7 @@ internal sealed class PlaybackCommands(
     {
         var result = await players.ExecuteAsync(GuildId, new SkipTrack(), Ct);
         await CompleteAsync(result.PreviousItem?.Track is { } skipped
-            ? $"Skipped **{Format.Url(TrackFormatting.EscapeText(skipped.Title), skipped.SourceUrl)}**."
+            ? $"Skipped **{MessageFormatting.Link(skipped.Title, skipped.SourceUrl)}**."
             : "Nothing is playing right now.");
     }
 
@@ -135,10 +136,10 @@ internal sealed class PlaybackCommands(
         var track = item.Track;
         await CompleteAsync(embed: new EmbedBuilder()
             .WithTitle(player.IsPaused ? "Paused" : "Now playing")
-            .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(track.Title), track.SourceUrl)}**")
+            .WithDescription($"**{MessageFormatting.Link(track.Title, track.SourceUrl)}**")
             .WithThumbnailUrl(track.ThumbnailUrl)
             .AddField("Artist", TrackFormatting.Artist(track), true)
-            .AddField("Requested by", TrackFormatting.EscapeText(requesterName), true)
+            .AddField("Requested by", MessageFormatting.Text(requesterName), true)
             .AddField("Requested at", item.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true)
             .AddField("Progress", TrackFormatting.ProgressBar(player.PlaybackPosition, track.Duration))
             .Build());

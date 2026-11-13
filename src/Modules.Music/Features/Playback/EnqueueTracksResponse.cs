@@ -1,3 +1,4 @@
+﻿using Application.Discord.Messages;
 using Discord;
 
 namespace Modules.Music.Features.Playback;
@@ -13,7 +14,7 @@ internal static class EnqueueTracksResponse
                 : mode == EnqueueTracksMode.Next ? "#1" : $"#{result.QueueCount}";
             var trackEmbed = new EmbedBuilder()
                 .WithTitle("Added to queue")
-                .WithDescription($"**{Format.Url(TrackFormatting.EscapeText(track.Title), track.SourceUrl)}**")
+                .WithDescription($"**{MessageFormatting.Link(track.Title, track.SourceUrl)}**")
                 .WithThumbnailUrl(track.ThumbnailUrl)
                 .AddField("Artist", TrackFormatting.Artist(track), true);
             return trackEmbed
@@ -29,7 +30,7 @@ internal static class EnqueueTracksResponse
             .WithDescription(description);
         if (result.Playlist is { } playlist)
         {
-            var playlistTitle = $"Playlist: **{Format.Url(TrackFormatting.EscapeText(playlist.Title), playlist.SourceUrl)}**";
+            var playlistTitle = $"Playlist: **{MessageFormatting.Link(playlist.Title, playlist.SourceUrl)}**";
             if (result.Tracks.Count <= 10)
             {
                 description = playlistTitle + "\n\n" + string.Join('\n', result.Tracks.Select(
@@ -40,9 +41,9 @@ internal static class EnqueueTracksResponse
                 description = $"{playlistTitle}\n{description}";
             }
             builder.WithDescription(description);
-            var creator = string.IsNullOrWhiteSpace(playlist.CreatorName) ? "Unknown" : TrackFormatting.EscapeText(playlist.CreatorName);
+            var creator = string.IsNullOrWhiteSpace(playlist.CreatorName) ? "Unknown" : playlist.CreatorName;
             builder.AddField("Created by", string.IsNullOrWhiteSpace(playlist.CreatorUrl)
-                ? creator : Format.Url(creator, playlist.CreatorUrl), true);
+                ? MessageFormatting.Text(creator) : MessageFormatting.Link(creator, playlist.CreatorUrl), true);
         }
         return builder
             .AddField("Total duration", TrackFormatting.Duration(totalDuration), true)
