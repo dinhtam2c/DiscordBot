@@ -79,7 +79,7 @@ internal sealed class SoundCloudTrackResolver(
             Id: metadata.Id,
             Title: metadata.Title,
             Description: metadata.Description ?? string.Empty,
-            Artist: metadata.Artists?.FirstOrDefault() ?? metadata.Artist ?? metadata.Uploader ?? metadata.Channel ?? string.Empty,
+            Artists: Track.SelectArtists(metadata.Artists, [metadata.Artist], [metadata.Uploader], [metadata.Channel]),
             Duration: TimeSpan.FromSeconds(metadata.Duration ?? 0),
             Source: TrackSource.SoundCloud,
             SourceUrl: sourceUrl,

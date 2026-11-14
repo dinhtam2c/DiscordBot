@@ -228,7 +228,7 @@ internal sealed class MusicNotifications(
             .WithTitle(title)
             .WithDescription($"**{MessageFormatting.Link(item.Track.Title, item.Track.SourceUrl)}**")
             .WithThumbnailUrl(item.Track.ThumbnailUrl)
-            .AddField("Artist", TrackFormatting.Artist(item.Track), true)
+            .AddField("Artist", TrackFormatting.Artists(item.Track), true)
             .AddField("Requested by", $"<@{item.RequesterId.Value}>", true);
 
     private static Embed CreatePlayingEmbed(string title, QueueItem item, TimeSpan? position)

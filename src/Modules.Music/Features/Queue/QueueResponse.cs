@@ -60,14 +60,13 @@ internal static class QueueResponse
         var compact = track with
         {
             Title = Shorten(track.Title, 80),
-            Artist = Shorten(track.Artist, 40),
-            UploaderName = track.UploaderName is { } name ? Shorten(name, 40) : null,
         };
         entry = TrackFormatting.Entry(compact);
         if (entry.Length <= 340)
             return entry;
 
-        var artist = string.IsNullOrWhiteSpace(compact.Artist) ? compact.UploaderName ?? "Unknown" : compact.Artist;
+        var artist = Shorten(track.Artists.Count > 0
+            ? string.Join(", ", track.Artists) : track.UploaderName ?? "Unknown", 40);
         return $"**{MessageFormatting.Text(compact.Title)}** • {MessageFormatting.Text(artist)} • `{TrackFormatting.Duration(compact.Duration)}`";
     }
 

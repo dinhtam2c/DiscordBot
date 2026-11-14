@@ -134,7 +134,7 @@ internal sealed class YoutubeTrackResolver(
             Id: dto.Id,
             Title: dto.Title,
             Description: dto.Description ?? string.Empty,
-            Artist: dto.Channel ?? dto.Uploader ?? string.Empty,
+            Artists: Track.SelectArtists(dto.Artists, [dto.Artist], dto.Creators, [dto.Creator], [dto.Channel], [dto.Uploader]),
             Duration: TimeSpan.FromSeconds(dto.Duration ?? 0),
             Source: TrackSource.Youtube,
             SourceUrl: dto.WebpageUrl ?? $"https://www.youtube.com/watch?v={dto.Id}",

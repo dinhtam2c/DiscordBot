@@ -138,7 +138,7 @@ internal sealed class PlaybackCommands(
             .WithTitle(player.IsPaused ? "Paused" : "Now playing")
             .WithDescription($"**{MessageFormatting.Link(track.Title, track.SourceUrl)}**")
             .WithThumbnailUrl(track.ThumbnailUrl)
-            .AddField("Artist", TrackFormatting.Artist(track), true)
+            .AddField("Artist", TrackFormatting.Artists(track), true)
             .AddField("Requested by", MessageFormatting.Text(requesterName), true)
             .AddField("Requested at", item.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true)
             .AddField("Progress", TrackFormatting.ProgressBar(player.PlaybackPosition, track.Duration))

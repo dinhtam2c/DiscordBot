@@ -16,6 +16,18 @@ internal sealed class YoutubeMetadata
     [JsonPropertyName("description")]
     public string? Description { get; init; }
 
+    [JsonPropertyName("artists")]
+    public List<string>? Artists { get; init; }
+
+    [JsonPropertyName("artist")]
+    public string? Artist { get; init; }
+
+    [JsonPropertyName("creators")]
+    public List<string>? Creators { get; init; }
+
+    [JsonPropertyName("creator")]
+    public string? Creator { get; init; }
+
     [JsonPropertyName("channel")]
     public string? Channel { get; init; }
 

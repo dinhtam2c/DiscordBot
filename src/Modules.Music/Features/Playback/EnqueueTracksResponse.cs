@@ -16,7 +16,7 @@ internal static class EnqueueTracksResponse
                 .WithTitle("Added to queue")
                 .WithDescription($"**{MessageFormatting.Link(track.Title, track.SourceUrl)}**")
                 .WithThumbnailUrl(track.ThumbnailUrl)
-                .AddField("Artist", TrackFormatting.Artist(track), true);
+                .AddField("Artist", TrackFormatting.Artists(track), true);
             return trackEmbed
                 .AddField("Duration", TrackFormatting.Duration(track.Duration), true)
                 .AddField("Position", position, true)

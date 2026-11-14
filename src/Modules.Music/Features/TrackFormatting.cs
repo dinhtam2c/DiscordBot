@@ -5,11 +5,18 @@ namespace Modules.Music.Features;
 
 internal static class TrackFormatting
 {
-    public static string Artist(Track track)
+    public static string Artists(Track track)
     {
-        var name = string.IsNullOrWhiteSpace(track.Artist) ? track.UploaderName : track.Artist;
-        var artist = string.IsNullOrWhiteSpace(name) ? "Unknown" : name;
-        return string.IsNullOrWhiteSpace(track.UploaderUrl) ? MessageFormatting.Text(artist) : MessageFormatting.Link(artist, track.UploaderUrl);
+        var names = track.Artists.Count > 0
+            ? track.Artists : Track.SelectArtists([track.UploaderName]);
+        if (names.Count == 0)
+            return "Unknown";
+
+        return string.Join(", ", names.Select(name =>
+            !string.IsNullOrWhiteSpace(track.UploaderUrl)
+                && string.Equals(name, track.UploaderName?.Trim(), StringComparison.OrdinalIgnoreCase)
+                ? MessageFormatting.Link(name, track.UploaderUrl)
+                : MessageFormatting.Text(name)));
     }
 
     public static string Duration(TimeSpan duration)
@@ -41,5 +48,5 @@ internal static class TrackFormatting
     }
 
     public static string Entry(Track track)
-        => $"**{MessageFormatting.Link(track.Title, track.SourceUrl)}** • {Artist(track)} • `{Duration(track.Duration)}`";
+        => $"**{MessageFormatting.Link(track.Title, track.SourceUrl)}** • {Artists(track)} • `{Duration(track.Duration)}`";
 }
