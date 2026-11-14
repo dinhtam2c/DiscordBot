@@ -12,6 +12,8 @@ internal sealed record Track(
     string? UploaderName = null,
     string? UploaderUrl = null)
 {
+    public string Title { get; init; } = string.IsNullOrWhiteSpace(Title) ? "Unknown song" : Title;
+
     public static IReadOnlyList<string> SelectArtists(params IEnumerable<string?>?[] candidates)
     {
         foreach (var candidate in candidates)

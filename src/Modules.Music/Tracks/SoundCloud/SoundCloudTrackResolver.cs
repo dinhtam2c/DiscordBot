@@ -56,7 +56,7 @@ internal sealed class SoundCloudTrackResolver(
                 .Select(entry => ParseTrack(entry, fallbackUrl))
                 .ToList();
             var playlist = includePlaylist
-                ? new PlaylistInfo(metadata.Title, metadata.WebpageUrl ?? metadata.OriginalUrl ?? fallbackUrl
+                ? new PlaylistInfo(string.IsNullOrWhiteSpace(metadata.Title) ? "Unknown playlist" : metadata.Title, metadata.WebpageUrl ?? metadata.OriginalUrl ?? fallbackUrl
                         ?? throw new InvalidOperationException("SoundCloud playlist metadata does not contain a webpage URL."),
                     metadata.Uploader, metadata.UploaderUrl)
                 : null;
@@ -77,7 +77,7 @@ internal sealed class SoundCloudTrackResolver(
 
         return new Track(
             Id: metadata.Id,
-            Title: metadata.Title,
+            Title: string.IsNullOrWhiteSpace(metadata.Title) ? "Unknown song" : metadata.Title,
             Description: metadata.Description ?? string.Empty,
             Artists: Track.SelectArtists(metadata.Artists, [metadata.Artist], [metadata.Uploader], [metadata.Channel]),
             Duration: TimeSpan.FromSeconds(metadata.Duration ?? 0),

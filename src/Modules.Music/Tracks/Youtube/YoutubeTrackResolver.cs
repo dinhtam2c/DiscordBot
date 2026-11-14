@@ -115,7 +115,7 @@ internal sealed class YoutubeTrackResolver(
                 .ToList()
                 ?? [];
             var playlist = includePlaylist
-                ? new PlaylistInfo(dto.Title, dto.WebpageUrl ?? input,
+                ? new PlaylistInfo(string.IsNullOrWhiteSpace(dto.Title) ? "Unknown playlist" : dto.Title, dto.WebpageUrl ?? input,
                     dto.Uploader ?? dto.Channel, dto.UploaderUrl ?? dto.ChannelUrl)
                 : null;
             return new TrackResolutionResult(tracks, playlist);
@@ -132,7 +132,7 @@ internal sealed class YoutubeTrackResolver(
 
         return new Track(
             Id: dto.Id,
-            Title: dto.Title,
+            Title: string.IsNullOrWhiteSpace(dto.Title) ? "Unknown song" : dto.Title,
             Description: dto.Description ?? string.Empty,
             Artists: Track.SelectArtists(dto.Artists, [dto.Artist], dto.Creators, [dto.Creator], [dto.Channel], [dto.Uploader]),
             Duration: TimeSpan.FromSeconds(dto.Duration ?? 0),

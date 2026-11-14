@@ -11,7 +11,7 @@ internal sealed class YoutubeMetadata
     public string Id { get; init; } = null!;
 
     [JsonPropertyName("title")]
-    public string Title { get; init; } = null!;
+    public string? Title { get; init; }
 
     [JsonPropertyName("description")]
     public string? Description { get; init; }
