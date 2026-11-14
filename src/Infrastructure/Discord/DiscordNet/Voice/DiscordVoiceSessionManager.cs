@@ -66,6 +66,19 @@ internal sealed class DiscordVoiceSessionManager(
     private GuildVoiceState GetState(GuildId guildId)
         => _states.GetOrAdd(guildId, id => new GuildVoiceState(id));
 
+    public Task RequestStatusAsync(GuildId guildId, string? status, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        _stopping.Token.ThrowIfCancellationRequested();
+        var state = GetState(guildId);
+        // Limit Unicode characters without splitting a surrogate pair.
+        status = string.IsNullOrWhiteSpace(status) ? null
+            : string.Concat(status.EnumerateRunes().Take(500).Select(rune => rune.ToString()));
+        state.SetStatus(status);
+        EnsureWorker(state);
+        return Task.CompletedTask;
+    }
+
     private void EnsureWorker(GuildVoiceState state)
     {
         state.EnsureWorker(() => Task.Run(() => RunGuildAsync(state, _stopping.Token)));
@@ -95,6 +108,8 @@ internal sealed class DiscordVoiceSessionManager(
         var retryDelay = TimeSpan.FromSeconds(1);
         var nextAttemptAt = DateTimeOffset.MinValue;
         var observedRevision = -1L;
+        DiscordVoiceSession? statusSession = null;
+        string? appliedStatus = null;
 
         try
         {
@@ -146,6 +161,17 @@ internal sealed class DiscordVoiceSessionManager(
                     }
 
                     await state.Output.SetSessionAsync(currentSession);
+                    if (snapshot.ManageStatus && (!ReferenceEquals(statusSession, currentSession)
+                        || appliedStatus != snapshot.Status))
+                    {
+                        if (!await SetStatusAsync(currentSession.GuildId, currentSession.VoiceChannelId, snapshot.Status, ct))
+                        {
+                            await state.WaitForSignalOrDelayAsync(MaximumRetryDelay, ct);
+                            continue;
+                        }
+                        statusSession = currentSession;
+                        appliedStatus = snapshot.Status;
+                    }
                     await state.WaitForSignalAsync(ct);
                     continue;
                 }
@@ -246,6 +272,9 @@ internal sealed class DiscordVoiceSessionManager(
         GuildVoiceState state,
         DiscordVoiceSession session)
     {
+        // Clear while still in the channel, before a move or intentional leave.
+        if (state.GetSnapshot().ManageStatus)
+            await SetStatusAsync(session.GuildId, session.VoiceChannelId, null, _stopping.Token);
         await state.Output.SetSessionAsync(null);
         state.SetSession(null);
         session.ConnectionChanged -= state.Signal;
@@ -286,6 +315,32 @@ internal sealed class DiscordVoiceSessionManager(
     private static TimeSpan NextRetryDelay(TimeSpan current)
         => TimeSpan.FromSeconds(Math.Min(current.TotalSeconds * 2, MaximumRetryDelay.TotalSeconds));
 
+    private async Task<bool> SetStatusAsync(GuildId guildId, ChannelId channelId, string? status, CancellationToken ct)
+    {
+        try
+        {
+            var channel = client.GetGuild(guildId.Value)?.GetVoiceChannel(channelId.Value);
+            if (channel is null)
+                return false;
+
+            // Discord.Net 3.20.2 dereferences null while validating the status length.
+            // An empty string clears the status through the same endpoint.
+            await channel.SetStatusAsync(status ?? string.Empty, new global::Discord.RequestOptions
+                {
+                    CancelToken = ct,
+                    Timeout = 5000,
+                });
+            return true;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to update voice channel status for channel {VoiceChannelId} in guild {GuildId}.",
+                channelId, guildId);
+        }
+        return false;
+    }
+
     private sealed class GuildVoiceState
     {
         private readonly object _sync = new();
@@ -303,6 +358,8 @@ internal sealed class DiscordVoiceSessionManager(
         private DiscordVoiceSession? _session;
         private DiscordVoiceSession? _faultedSession;
         private long _revision;
+        private string? _status;
+        private bool _manageStatus;
 
         public GuildVoiceState(GuildId guildId)
         {
@@ -342,7 +399,19 @@ internal sealed class DiscordVoiceSessionManager(
         public Snapshot GetSnapshot()
         {
             lock (_sync)
-                return new Snapshot(GuildId, _desiredChannelId, _session, _revision);
+                return new Snapshot(GuildId, _desiredChannelId, _session, _revision, _status, _manageStatus);
+        }
+
+        public void SetStatus(string? status)
+        {
+            lock (_sync)
+            {
+                if (_manageStatus && _status == status)
+                    return;
+                _status = status;
+                _manageStatus = true;
+            }
+            Signal();
         }
 
         public bool TrySetSession(DiscordVoiceSession session, long revision)
@@ -429,6 +498,8 @@ internal sealed class DiscordVoiceSessionManager(
             GuildId GuildId,
             ChannelId? DesiredChannelId,
             DiscordVoiceSession? Session,
-            long Revision);
+            long Revision,
+            string? Status,
+            bool ManageStatus);
     }
 }

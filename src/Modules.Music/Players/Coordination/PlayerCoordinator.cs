@@ -239,6 +239,7 @@ internal sealed class PlayerCoordinator(
     private async Task ApplyAsync(
         GuildId guildId, Player? player, ChannelId? previousChannel, bool explicitJoin, bool explicitLeave, CancellationToken ct)
     {
+        await voice.RequestStatusAsync(guildId, player?.CurrentQueueItem?.Track.Title, ct);
         if (player?.VoiceChannelId is { } channel)
         {
             if (explicitJoin || previousChannel != channel)
@@ -321,6 +322,7 @@ internal sealed class PlayerCoordinator(
 
             // Once saved, retries only synchronize the latest stored target. Never advance twice.
             await playback.CompleteAsync(ended.GuildId, ended.SessionId);
+            await voice.RequestStatusAsync(ended.GuildId, player?.CurrentQueueItem?.Track.Title, ct);
             await playback.ApplyAsync(ended.GuildId, PlaybackTarget.From(player), PostPlaybackStarted, PostPlaybackEnded, ct);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
