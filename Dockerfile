@@ -82,9 +82,9 @@ RUN case "${TARGETARCH}" in \
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS yt-dlp
 
 ARG TARGETARCH
-ARG YTDLP_CHANNEL=stable
+ARG YTDLP_CHANNEL=nightly
 ARG YTDLP_STABLE_VERSION=2026.10.26
-ARG YTDLP_NIGHTLY_VERSION=latest
+ARG YTDLP_NIGHTLY_VERSION=2026.11.14.232655
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -161,5 +161,6 @@ WORKDIR /app
 
 COPY --from=dotnet-build /app/publish .
 
+USER app:app
 
 CMD ["dotnet", "Bot.dll"]
