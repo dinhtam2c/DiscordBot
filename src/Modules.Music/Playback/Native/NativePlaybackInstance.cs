@@ -87,14 +87,8 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
     {
         try
         {
-            if (resolvedSource is null)
-            {
-                await using var sourceStream = await source.OpenAsync(track, ct);
-                await using var pcmStream = await transcoder.OpenPcmStreamAsync(sourceStream, ct);
-                await ProduceAsync(pcmStream, ct);
-                return;
-            }
-
+            var usePipe = resolvedSource is null;
+            var startupFailures = 0;
             var retryDelay = TimeSpan.FromSeconds(1);
             while (true)
             {
@@ -102,26 +96,50 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
                 var previousBytes = _bytesProduced;
                 try
                 {
-                    resolvedSource ??= await source.ResolveAsync(track, ct);
-                    if (resolvedSource.IsLive)
-                        throw new Application.Abstractions.UserFriendlyException("This song doesn't support seeking.");
-                    // Retain queued PCM and resume after it, so reconnect does not duplicate buffered audio.
-                    var position = _startPosition + TimeSpan.FromSeconds(_bytesProduced / (double)PcmBytesPerSecond);
-                    await using var pcmStream = await transcoder.OpenPcmStreamAsync(resolvedSource, position, ct);
-                    await ProduceAsync(pcmStream, ct);
+                    if (usePipe)
+                    {
+                        await using var sourceStream = await source.OpenAsync(track, ct);
+                        await using var pcmStream = await transcoder.OpenPcmStreamAsync(sourceStream, ct);
+                        await ProduceAsync(pcmStream, ct);
+                    }
+                    else
+                    {
+                        resolvedSource ??= await source.ResolveAsync(track, ct);
+                        if (resolvedSource.IsLive)
+                            throw new Application.Abstractions.UserFriendlyException(
+                                "This song couldn't be resumed because its audio source is live.");
+                        // Retain queued PCM and resume after it, without duplicating buffered audio.
+                        var position = _startPosition + TimeSpan.FromSeconds(_bytesProduced / (double)PcmBytesPerSecond);
+                        await using var pcmStream = await transcoder.OpenPcmStreamAsync(resolvedSource, position, ct);
+                        await ProduceAsync(pcmStream, ct);
+                    }
                     return;
                 }
-                catch (AudioProcessException ex) when (ex.IsTransient && !ct.IsCancellationRequested)
+                catch (Exception ex) when (AudioProcessException.IsTransientFailure(ex) && !ct.IsCancellationRequested)
                 {
+                    if (_bytesProduced == 0 && ++startupFailures >= 3)
+                    {
+                        if (AudioProcessException.Find(ex) is { } error)
+                            throw error.ForUser();
+                        throw;
+                    }
                     if (_bytesProduced > previousBytes)
                         retryDelay = TimeSpan.FromSeconds(1);
-                    logger?.LogWarning("Failed to read audio for track '{TrackTitle}'. Refreshing the source in {RetrySeconds} seconds.",
-                        track.Title, retryDelay.TotalSeconds);
+                    logger?.LogWarning("Failed to read audio for track '{TrackTitle}'. Retrying in {RetrySeconds} seconds. Reason: {Reason}",
+                        track.Title, retryDelay.TotalSeconds, ex.Message);
                     resolvedSource = null;
+                    // Once PCM exists, restart through a fresh HTTP URL at the produced position.
+                    // Before that, retry the original input mode (including non-seekable sources).
+                    usePipe = usePipe && _bytesProduced == 0;
                     await Task.Delay(retryDelay, ct);
                     retryDelay = TimeSpan.FromSeconds(Math.Min(retryDelay.TotalSeconds * 2, 30));
                 }
             }
+        }
+        catch (AudioProcessException ex)
+        {
+            _cts.Cancel();
+            throw ex.ForUser();
         }
         catch
         {
@@ -270,6 +288,10 @@ internal sealed class NativePlaybackInstance : IPlaybackInstance
         }
         catch (OperationCanceledException)
         {
+        }
+        catch (Exception) when (_playbackTask.IsFaulted)
+        {
+            // Completion is observed by PlaybackEngine; cleanup must not report it a second time.
         }
     }
 

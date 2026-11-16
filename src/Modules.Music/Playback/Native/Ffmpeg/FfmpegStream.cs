@@ -102,7 +102,8 @@ internal sealed class FfmpegStream : ProducerStream
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to transcode audio. FFmpeg exit code: {ExitCode}. Produced {PcmBytes} bytes of PCM audio ({PcmDurationSeconds:F3} seconds). Standard error: {Stderr}",
+            // The playback owner logs the terminal failure; intermediate attempts are diagnostics.
+            logger.LogDebug(ex, "Failed to transcode audio. FFmpeg exit code: {ExitCode}. Produced {PcmBytes} bytes of PCM audio ({PcmDurationSeconds:F3} seconds). Standard error: {Stderr}",
                 result?.ExitCode, pcm.BytesWritten, pcm.Duration.TotalSeconds, StandardError(result));
             if (media is not null && ex is FFMpegProcessException)
                 throw new AudioProcessException("ffmpeg", result?.ExitCode ?? -1, StandardError(result));
