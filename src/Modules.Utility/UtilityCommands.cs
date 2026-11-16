@@ -10,6 +10,7 @@ internal sealed class UtilityCommands(
     IAppLifetime lifetime) : DiscordCommands(lifetime)
 {
     [SlashCommand("help", "See all commands and how to use them.")]
+    [Ephemeral]
     public Task HelpAsync()
     {
         var lines = commands.SlashCommands.OrderBy(command => command.Name)
@@ -18,5 +19,6 @@ internal sealed class UtilityCommands(
     }
 
     [SlashCommand("ping", "Check the bot's connection to Discord.")]
+    [Ephemeral]
     public Task PingAsync() => CompleteAsync($"Discord latency: **{Context.Client.Latency} ms**.");
 }
