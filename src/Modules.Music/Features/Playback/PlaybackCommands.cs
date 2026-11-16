@@ -42,6 +42,7 @@ internal sealed class PlaybackCommands(
     }
 
     [SlashCommand("resume", "Resume the music.")]
+    [Ephemeral]
     public async Task ResumeAsync()
     {
         var result = await players.ExecuteAsync(GuildId, new ResumePlayback(), Ct);
@@ -129,6 +130,7 @@ internal sealed class PlaybackCommands(
     }
 
     [SlashCommand("nowplaying", "See what's playing, its progress, and who requested it.")]
+    [Ephemeral]
     public async Task NowPlayingAsync()
     {
         var player = await players.GetSnapshotAsync(GuildId, Ct)

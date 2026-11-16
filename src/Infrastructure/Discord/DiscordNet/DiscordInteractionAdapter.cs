@@ -7,7 +7,6 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Infrastructure.Discord.DiscordNet;
 
@@ -16,7 +15,6 @@ internal sealed class DiscordInteractionAdapter(
     InteractionService commands,
     IServiceScopeFactory scopes,
     IAppLifetime lifetime,
-    IOptions<DiscordCommandOptions> options,
     ILogger<DiscordInteractionAdapter> logger)
 {
     public Task HandleAsync(SocketInteraction interaction)
@@ -44,8 +42,12 @@ internal sealed class DiscordInteractionAdapter(
         {
             ct.ThrowIfCancellationRequested();
             if (interaction is SocketSlashCommand slash)
-                await interaction.DeferAsync(ephemeral: options.Value.EphemeralCommands.Contains(slash.CommandName),
+            {
+                var command = commands.SearchSlashCommand(slash);
+                var ephemeral = command.IsSuccess && command.Command.Attributes.OfType<EphemeralAttribute>().Any();
+                await interaction.DeferAsync(ephemeral: ephemeral,
                     options: new RequestOptions { CancelToken = ct });
+            }
             else if (interaction is SocketMessageComponent component)
                 await component.DeferAsync(options: new RequestOptions { CancelToken = ct });
 

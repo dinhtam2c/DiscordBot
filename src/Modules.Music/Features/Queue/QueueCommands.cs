@@ -10,6 +10,7 @@ namespace Modules.Music.Features.Queue;
 internal sealed class QueueCommands(PlayerCoordinator players, IAppLifetime lifetime) : DiscordCommands(lifetime)
 {
     [SlashCommand("queue", "See what's playing and what's coming up next.")]
+    [Ephemeral]
     public async Task QueueAsync()
     {
         var player = await players.GetSnapshotAsync(GuildId, Ct)
