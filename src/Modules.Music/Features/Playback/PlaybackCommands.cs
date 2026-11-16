@@ -92,6 +92,12 @@ internal sealed class PlaybackCommands(
     [ComponentInteraction("music:skip:*")]
     public Task SkipButtonAsync(string itemId) => ControlAsync(itemId, new SkipTrack());
 
+    [ComponentInteraction("music:autoplay:*")]
+    public Task AutoplayButtonAsync(string itemId) => ControlAsync(itemId, new ToggleAutoplay());
+
+    [ComponentInteraction("music:repeat:*")]
+    public Task RepeatButtonAsync(string itemId) => ControlAsync(itemId, new CycleLoopMode());
+
     [ComponentInteraction("music:stop:*")]
     public Task StopButtonAsync(string itemId) => ControlAsync(itemId, new StopPlayback());
 

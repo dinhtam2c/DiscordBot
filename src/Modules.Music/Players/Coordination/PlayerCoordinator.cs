@@ -137,7 +137,7 @@ internal sealed partial class PlayerCoordinator(
             if (SynchronizePresence(player))
                 await unitOfWork.SaveChangesAsync(ct);
             await playback.SeekAsync(guildId, PlaybackTarget.From(player), seek.Position, seek.Source, PostPlaybackEnded, ct);
-            notifications.Updated(guildId, item, player!.IsPaused);
+            notifications.Updated(guildId, PlayerSnapshot.From(player!));
             return new PlayerResult(item, player.IsPaused, player.QueueCount, false);
         }
 
@@ -186,10 +186,12 @@ internal sealed partial class PlayerCoordinator(
                 player.Enqueue(items, enqueue.PlayNext);
                 break;
 
-            case SetAutoplay autoplay:
+            case SetAutoplay:
+            case ToggleAutoplay:
                 player = await GetOrCreateAsync(player, guildId, repository, ct);
-                player.SetAutoplay(autoplay.Enabled);
-                if (!autoplay.Enabled)
+                var enabled = request is SetAutoplay autoplay ? autoplay.Enabled : !player.AutoplayEnabled;
+                player.SetAutoplay(enabled);
+                if (!enabled)
                 {
                     mailbox.Autoplay.Cancel();
                     mailbox.Autoplay.Active = false;
@@ -239,6 +241,14 @@ internal sealed partial class PlayerCoordinator(
                         changed = player.HasCurrentTrack;
                         if (changed) player.Skip();
                         break;
+                    case CycleLoopMode:
+                        player.SetLoopMode(player.LoopMode switch
+                        {
+                            LoopMode.None => LoopMode.Track,
+                            LoopMode.Track => LoopMode.Queue,
+                            _ => LoopMode.None,
+                        });
+                        break;
                     case SetLoopMode loop:
                         player.SetLoopMode(loop.Mode);
                         break;
@@ -284,8 +294,8 @@ internal sealed partial class PlayerCoordinator(
         {
             if (player?.CurrentQueueItem is null)
                 notifications.Ended(guildId, stopped: request is StopPlayback or LeaveVoice, position: endedPosition);
-            else if (player.CurrentQueueItem.Id == previousItem.Id && player.IsPaused != wasPaused)
-                notifications.Updated(guildId, player.CurrentQueueItem, player.IsPaused);
+            else if (player.CurrentQueueItem.Id == previousItem.Id)
+                notifications.Updated(guildId, PlayerSnapshot.From(player));
         }
         SynchronizeAutoplay(guildId, mailbox, player);
         return new PlayerResult(previousItem, wasPaused, player?.QueueCount ?? 0,
@@ -334,7 +344,7 @@ internal sealed partial class PlayerCoordinator(
         var player = await repository.GetByIdAsync(started.GuildId, ct);
         if (player?.CurrentQueueItem is { } item && item.Id == started.QueueItemId)
         {
-            notifications.Playing(started.GuildId, item, player.IsPaused);
+            notifications.Playing(started.GuildId, PlayerSnapshot.From(player));
             SynchronizeAutoplay(started.GuildId, GetMailbox(started.GuildId), player);
         }
     }

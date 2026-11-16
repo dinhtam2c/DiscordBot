@@ -33,12 +33,19 @@ internal sealed class MusicNotifications(
             (_, current) => interactionId > current.InteractionId ? destination : current);
     }
 
-    public void Playing(GuildId guildId, QueueItem item, bool isPaused = false)
-        => PublishToChannel(guildId, NotificationKind.Started, item, isPaused);
+    public void Playing(GuildId guildId, PlayerSnapshot player)
+    {
+        if (_destinations.TryGetValue(guildId, out var destination) && player.CurrentQueueItem is { } item)
+            Publish(new Notification(guildId, NotificationKind.Started, destination.ChannelId, item,
+                Position: playback.GetPosition(guildId, item.Id), Player: player));
+    }
 
-    public void Updated(GuildId guildId, QueueItem item, bool isPaused)
-        => Publish(new Notification(guildId, NotificationKind.Updated, Item: item, IsPaused: isPaused,
-            Position: playback.GetPosition(guildId, item.Id)));
+    public void Updated(GuildId guildId, PlayerSnapshot player)
+    {
+        if (player.CurrentQueueItem is { } item)
+            Publish(new Notification(guildId, NotificationKind.Updated, Item: item,
+                Position: playback.GetPosition(guildId, item.Id), Player: player));
+    }
 
     public void Ended(GuildId guildId, bool stopped, TimeSpan? position = null, bool completed = false)
         => Publish(new Notification(guildId,
@@ -52,15 +59,9 @@ internal sealed class MusicNotifications(
     }
 
     public void Failed(GuildId guildId, QueueItem item, Exception? error)
-        => PublishToChannel(guildId, NotificationKind.Failed, item, error: error);
-
-    private void PublishToChannel(GuildId guildId, NotificationKind kind, QueueItem item, bool isPaused = false, Exception? error = null)
     {
-        if (!_destinations.TryGetValue(guildId, out var destination))
-            return;
-
-        Publish(new Notification(guildId, kind, destination.ChannelId, item, isPaused, error,
-            kind == NotificationKind.Started ? playback.GetPosition(guildId, item.Id) : null));
+        if (_destinations.TryGetValue(guildId, out var destination))
+            Publish(new Notification(guildId, NotificationKind.Failed, destination.ChannelId, item, Error: error));
     }
 
     private void Publish(Notification notification)
@@ -128,7 +129,7 @@ internal sealed class MusicNotifications(
             if (position is null || position == message.Position)
                 continue;
             await DeliverSafelyAsync(new Notification(guildId, NotificationKind.Updated,
-                Item: message.Item, Position: position), ct);
+                Item: message.Item, Position: position, Player: message.Player), ct);
         }
     }
 
@@ -159,14 +160,14 @@ internal sealed class MusicNotifications(
                     return;
                 _lastPlaying[notification.GuildId] = previous with
                 {
-                    IsPaused = notification.IsPaused,
+                    Player = notification.Player!,
                     Position = notification.Position,
                 };
                 try
                 {
                     await messages.EditAsync(previous.ChannelId, previous.MessageId,
-                        CreatePlayingEmbed(notification.IsPaused ? "Paused" : "Now playing", notification.Item, notification.Position),
-                        CreateControls(notification.Item, notification.IsPaused), ct);
+                        CreatePlayingEmbed(PlayingTitle(notification.Player!), notification.Item!, notification.Position, notification.Player!),
+                        CreateControls(notification.Player!), ct);
                 }
                 catch (global::Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.UnknownMessage)
                 {
@@ -191,7 +192,7 @@ internal sealed class MusicNotifications(
                 try
                 {
                     await messages.EditAsync(previous.ChannelId, previous.MessageId,
-                        CreatePlayingEmbed(notification.Kind == NotificationKind.Stopped ? "Playback stopped" : "Playback finished", previous.Item, finalPosition),
+                        CreatePlayingEmbed(notification.Kind == NotificationKind.Stopped ? "Playback stopped" : "Playback finished", previous.Item, finalPosition, previous.Player),
                         new ComponentBuilder().Build(), ct);
                 }
                 catch (global::Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.UnknownMessage)
@@ -220,19 +221,33 @@ internal sealed class MusicNotifications(
     {
         var item = notification.Item!;
         var messageId = await messages.SendAsync(channelId,
-            embed: CreatePlayingEmbed(notification.IsPaused ? "Paused" : "Now playing", item, notification.Position),
-            ct: ct, components: CreateControls(item, notification.IsPaused));
-        _lastPlaying[notification.GuildId] = new SentMessage(channelId, messageId, item, notification.IsPaused, true, notification.Position);
+            embed: CreatePlayingEmbed(PlayingTitle(notification.Player!), item, notification.Position, notification.Player!),
+            ct: ct, components: CreateControls(notification.Player!));
+        _lastPlaying[notification.GuildId] = new SentMessage(channelId, messageId, notification.Player!, true, notification.Position);
     }
 
-    private static MessageComponent CreateControls(QueueItem item, bool isPaused)
-        => new ComponentBuilder()
-            .WithButton(isPaused ? "Resume" : "Pause", $"music:{(isPaused ? "resume" : "pause")}:{item.Id:N}",
-                ButtonStyle.Secondary, emote: new Emoji(isPaused ? "\u25B6\uFE0F" : "\u23F8\uFE0F"))
-            .WithButton("Skip", $"music:skip:{item.Id:N}", ButtonStyle.Primary, emote: new Emoji("\u23ED\uFE0F"))
-            .WithButton("Stop", $"music:stop:{item.Id:N}", ButtonStyle.Danger, emote: new Emoji("\u23F9\uFE0F"))
-            .WithButton("Queue", "music:queue-open", ButtonStyle.Secondary, emote: new Emoji("\uD83D\uDCCB"))
+    private static string PlayingTitle(PlayerSnapshot player)
+        => !player.IsPaused ? "Now playing"
+            : player.IsPausedForEmptyChannel ? "Paused \u00B7 Voice channel is empty" : "Paused";
+
+    private static MessageComponent CreateControls(PlayerSnapshot player)
+    {
+        var id = player.CurrentQueueItem!.Id.ToString("N");
+        var repeat = player.LoopMode switch { LoopMode.Track => "Song", LoopMode.Queue => "Queue", _ => "Off" };
+        return new ComponentBuilder()
+            .WithButton(player.IsPaused ? "Resume" : "Pause", $"music:{(player.IsPaused ? "resume" : "pause")}:{id}",
+                player.IsPaused ? ButtonStyle.Primary : ButtonStyle.Secondary,
+                emote: new Emoji(player.IsPaused ? "\u25B6\uFE0F" : "\u23F8\uFE0F"), row: 0)
+            .WithButton("Skip", $"music:skip:{id}", ButtonStyle.Secondary, emote: new Emoji("\u23ED\uFE0F"), row: 0)
+            .WithButton("Queue", "music:queue-open", ButtonStyle.Secondary, emote: new Emoji("\uD83D\uDCCB"), row: 0)
+            .WithButton("Stop", $"music:stop:{id}", ButtonStyle.Danger, emote: new Emoji("\u23F9\uFE0F"), row: 0)
+            .WithButton($"Autoplay: {(player.AutoplayEnabled ? "On" : "Off")}", $"music:autoplay:{id}",
+                player.AutoplayEnabled ? ButtonStyle.Success : ButtonStyle.Secondary, emote: new Emoji("\u267E\uFE0F"), row: 1)
+            .WithButton($"Repeat: {repeat}", $"music:repeat:{id}",
+                player.LoopMode == LoopMode.None ? ButtonStyle.Secondary : ButtonStyle.Success,
+                emote: new Emoji("\uD83D\uDD01"), row: 1)
             .Build();
+    }
 
     private static EmbedBuilder CreateEmbed(string title, QueueItem item)
         => new EmbedBuilder()
@@ -242,9 +257,10 @@ internal sealed class MusicNotifications(
             .AddField("Artist", TrackFormatting.Artists(item.Track), true)
             .AddField(item.IsAutoplay ? "Added by" : "Requested by", item.RequesterId is { } requester ? $"<@{requester.Value}>" : "Autoplay", true);
 
-    private static Embed CreatePlayingEmbed(string title, QueueItem item, TimeSpan? position)
+    private static Embed CreatePlayingEmbed(string title, QueueItem item, TimeSpan? position, PlayerSnapshot player)
         => CreateEmbed(title, item)
             .AddField("Progress", TrackFormatting.ProgressBar(position, item.Track.Duration))
+            .WithFooter($"Volume {player.Volume.Value}% \u00B7 {player.Queue.Count} {(player.Queue.Count == 1 ? "song" : "songs")} queued")
             .Build();
 
     private static UserFriendlyException? FindFriendlyError(Exception? error)
@@ -256,9 +272,13 @@ internal sealed class MusicNotifications(
         };
 
     private sealed record Destination(ChannelId ChannelId, ulong InteractionId);
-    private sealed record SentMessage(ChannelId ChannelId, ulong MessageId, QueueItem Item,
-        bool IsPaused, bool IsActive, TimeSpan? Position);
+    private sealed record SentMessage(ChannelId ChannelId, ulong MessageId, PlayerSnapshot Player,
+        bool IsActive, TimeSpan? Position)
+    {
+        public QueueItem Item => Player.CurrentQueueItem!;
+        public bool IsPaused => Player.IsPaused;
+    }
     private enum NotificationKind { Started, Updated, Stopped, Finished, Completed, Failed, AutoplayStopped }
     private sealed record Notification(GuildId GuildId, NotificationKind Kind, ChannelId? ChannelId = null,
-        QueueItem? Item = null, bool IsPaused = false, Exception? Error = null, TimeSpan? Position = null);
+        QueueItem? Item = null, Exception? Error = null, TimeSpan? Position = null, PlayerSnapshot? Player = null);
 }
