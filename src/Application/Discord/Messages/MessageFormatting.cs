@@ -38,6 +38,9 @@ public static class MessageFormatting
             || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
             return Text(label);
 
+        // Break spoiler delimiters without adding visible escapes to the link label.
+        label = System.Text.RegularExpressions.Regex.Replace(label, @"(?<=\|)\|", "\u200B|");
+
         // Discord displays backslash escapes literally in masked-link labels.
         // Keep simple labels raw. Ambiguous labels retain a separate, safe link.
         var target = uri.AbsoluteUri.Replace("(", "%28").Replace(")", "%29");
