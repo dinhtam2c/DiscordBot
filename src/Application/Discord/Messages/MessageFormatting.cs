@@ -39,11 +39,11 @@ public static class MessageFormatting
             return Text(label);
 
         // Discord displays backslash escapes literally in masked-link labels.
-        // Keep simple labels raw; render ambiguous Markdown as ordinary text.
-        if (!CanUseLinkLabel(label))
-            return Text(label);
-
+        // Keep simple labels raw. Ambiguous labels retain a separate, safe link.
         var target = uri.AbsoluteUri.Replace("(", "%28").Replace(")", "%29");
+        if (!CanUseLinkLabel(label))
+            return $"{Text(label)} · [Open]({target})";
+
         return $"[{label}]({target})";
     }
 
