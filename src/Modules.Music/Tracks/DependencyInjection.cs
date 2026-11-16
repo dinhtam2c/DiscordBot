@@ -14,6 +14,7 @@ internal static class DependencyInjection
             .BindConfiguration(TrackSearchOptions.SectionName)
             .Validate(options => options.SearchResultCount > 0, "Track search result count must be positive.")
             .ValidateOnStart();
+        services.AddSingleton<IYoutubeRecommendations, YoutubeRecommendations>();
         services.AddSingleton<ITrackResolverFactory, TrackResolverFactory>();
         services.AddSingleton<ITrackResolver, YoutubeTrackResolver>();
         services.AddSingleton<ITrackResolver, SoundCloudTrackResolver>();

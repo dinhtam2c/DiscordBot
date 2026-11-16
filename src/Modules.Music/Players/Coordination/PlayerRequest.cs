@@ -25,6 +25,7 @@ internal sealed record SeekPlayback(TimeSpan Position, Tracks.AudioSources.Resol
 }
 internal sealed record SkipTrack : PlayerRequest;
 internal sealed record StopPlayback : PlayerRequest;
+internal sealed record SetAutoplay(bool Enabled) : PlayerRequest;
 internal sealed record SetVolume(Volume Volume) : PlayerRequest;
 internal sealed record SetLoopMode(LoopMode Mode) : PlayerRequest;
 internal sealed record ClearQueue : PlayerRequest;

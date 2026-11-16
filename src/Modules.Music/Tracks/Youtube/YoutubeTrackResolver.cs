@@ -124,7 +124,7 @@ internal sealed class YoutubeTrackResolver(
         return new TrackResolutionResult([ParseTrack(dto)]);
     }
 
-    private static Track ParseTrack(YoutubeMetadata dto)
+    internal static Track ParseTrack(YoutubeMetadata dto)
     {
         var thumbnailUrl = dto.Thumbnail
             ?? dto.Thumbnails?.OrderByDescending(thumbnail => thumbnail.Width ?? 0).FirstOrDefault()?.Url

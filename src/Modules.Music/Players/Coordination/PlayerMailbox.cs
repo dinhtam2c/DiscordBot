@@ -1,4 +1,5 @@
 using System.Threading.Channels;
+using Modules.Music.Features.Autoplay;
 using Microsoft.Extensions.Logging;
 
 namespace Modules.Music.Players.Coordination;
@@ -14,6 +15,8 @@ internal sealed class PlayerMailbox(
     public Task Completion { get; private set; } = Task.CompletedTask;
 
     // Accessed only by work items running on this mailbox.
+    public AutoplaySession Autoplay { get; } = new();
+
     public long EnqueueRevision { get; set; }
     public long SeekRevision { get; set; }
 
@@ -52,10 +55,12 @@ internal sealed class PlayerMailbox(
         }
         finally
         {
+            Autoplay.Cancel();
             _channel.Writer.TryComplete();
             while (_channel.Reader.TryRead(out var pending))
                 pending.Cancel();
 
+            await Autoplay.Preparation;
             try { await cleanup(); }
             catch (Exception ex) { logger.LogError(ex, "Failed to clean up player runtime."); }
         }

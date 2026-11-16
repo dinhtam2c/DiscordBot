@@ -5,8 +5,10 @@ namespace Modules.Music.Players;
 
 internal sealed record QueueItem(
     Track Track,
-    UserId RequesterId,
+    UserId? RequesterId,
     DateTimeOffset RequestedAt)
 {
+    public bool IsAutoplay => RequesterId is null;
+
     public Guid Id { get; init; } = Guid.NewGuid();
 }

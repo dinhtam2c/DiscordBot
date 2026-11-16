@@ -37,16 +37,21 @@ internal sealed class EnqueueTracksUseCase(
     {
         notifications.SetChannel(input.GuildId, input.TextChannelId, input.InteractionId);
         var revision = await players.BeginEnqueueAsync(input.GuildId, ct);
-        var resolved = await resolverFactory.Select(query).ResolveAsync(query, ct);
-        logger.LogInformation("Resolved {TrackCount} tracks for query '{Query}'.", resolved.Tracks.Count, query);
-        return await EnqueueAsync(input, resolved, revision, ct);
+        try
+        {
+            var resolved = await resolverFactory.Select(query).ResolveAsync(query, ct);
+            logger.LogInformation("Resolved {TrackCount} tracks for query '{Query}'.", resolved.Tracks.Count, query);
+            return await EnqueueAsync(input, resolved, revision, ct);
+        }
+        finally { await players.EndEnqueueAsync(input.GuildId); }
     }
 
     public async Task<EnqueueTracksResult> ExecuteAsync(EnqueueTracksInput input, IReadOnlyList<Track> tracks, CancellationToken ct)
     {
         notifications.SetChannel(input.GuildId, input.TextChannelId, input.InteractionId);
         var revision = await players.BeginEnqueueAsync(input.GuildId, ct);
-        return await EnqueueAsync(input, new TrackResolutionResult(tracks), revision, ct);
+        try { return await EnqueueAsync(input, new TrackResolutionResult(tracks), revision, ct); }
+        finally { await players.EndEnqueueAsync(input.GuildId); }
     }
 
     private async Task<EnqueueTracksResult> EnqueueAsync(EnqueueTracksInput input, TrackResolutionResult resolved,

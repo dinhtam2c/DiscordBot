@@ -17,9 +17,11 @@ internal sealed record PlayerSnapshot(
     public bool HasQueue => Queue.Count > 0;
 
     // Runtime progress is added by the coordinator and is never persisted with Player.
+    public bool AutoplayEnabled { get; init; }
+
     public TimeSpan? PlaybackPosition { get; init; }
 
     internal static PlayerSnapshot From(Player player)
         => new(player.VoiceChannelId, player.CurrentQueueItem, Array.AsReadOnly(player.Queue.ToArray()),
-            player.IsPaused, player.Volume, player.LoopMode);
+            player.IsPaused, player.Volume, player.LoopMode) { AutoplayEnabled = player.AutoplayEnabled };
 }

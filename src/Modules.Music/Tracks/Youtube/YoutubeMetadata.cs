@@ -4,6 +4,12 @@ namespace Modules.Music.Tracks.Youtube;
 
 internal sealed class YoutubeMetadata
 {
+    [JsonPropertyName("is_live")]
+    public bool? IsLive { get; init; }
+
+    [JsonPropertyName("availability")]
+    public string? Availability { get; init; }
+
     [JsonPropertyName("_type")]
     public string? Type { get; init; }
 

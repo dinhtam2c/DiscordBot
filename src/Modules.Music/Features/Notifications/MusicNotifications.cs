@@ -45,6 +45,12 @@ internal sealed class MusicNotifications(
             stopped ? NotificationKind.Stopped : completed ? NotificationKind.Completed : NotificationKind.Finished,
             Position: position));
 
+    public void AutoplayStopped(GuildId guildId)
+    {
+        if (_destinations.TryGetValue(guildId, out var destination))
+            Publish(new Notification(guildId, NotificationKind.AutoplayStopped, destination.ChannelId));
+    }
+
     public void Failed(GuildId guildId, QueueItem item, Exception? error)
         => PublishToChannel(guildId, NotificationKind.Failed, item, error: error);
 
@@ -194,6 +200,11 @@ internal sealed class MusicNotifications(
                 }
                 break;
 
+            case NotificationKind.AutoplayStopped:
+                await messages.SendAsync(notification.ChannelId!.Value,
+                    text: "Couldn't continue autoplay. Use `/play` to choose another song.", ct: ct);
+                break;
+
             case NotificationKind.Failed:
                 var item = notification.Item!;
                 await messages.SendAsync(notification.ChannelId!.Value, embed: CreateEmbed("Song skipped", item)
@@ -229,7 +240,7 @@ internal sealed class MusicNotifications(
             .WithDescription($"**{MessageFormatting.Link(item.Track.Title, item.Track.SourceUrl)}**")
             .WithThumbnailUrl(item.Track.ThumbnailUrl)
             .AddField("Artist", TrackFormatting.Artists(item.Track), true)
-            .AddField("Requested by", $"<@{item.RequesterId.Value}>", true);
+            .AddField(item.IsAutoplay ? "Added by" : "Requested by", item.RequesterId is { } requester ? $"<@{requester.Value}>" : "Autoplay", true);
 
     private static Embed CreatePlayingEmbed(string title, QueueItem item, TimeSpan? position)
         => CreateEmbed(title, item)
@@ -247,7 +258,7 @@ internal sealed class MusicNotifications(
     private sealed record Destination(ChannelId ChannelId, ulong InteractionId);
     private sealed record SentMessage(ChannelId ChannelId, ulong MessageId, QueueItem Item,
         bool IsPaused, bool IsActive, TimeSpan? Position);
-    private enum NotificationKind { Started, Updated, Stopped, Finished, Completed, Failed }
+    private enum NotificationKind { Started, Updated, Stopped, Finished, Completed, Failed, AutoplayStopped }
     private sealed record Notification(GuildId GuildId, NotificationKind Kind, ChannelId? ChannelId = null,
         QueueItem? Item = null, bool IsPaused = false, Exception? Error = null, TimeSpan? Position = null);
 }

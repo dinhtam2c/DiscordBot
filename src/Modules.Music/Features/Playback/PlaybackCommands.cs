@@ -141,16 +141,16 @@ internal sealed class PlaybackCommands(
             return;
         }
 
-        var requester = Context.Guild.GetUser(item.RequesterId.Value);
-        var requesterName = requester?.DisplayName ?? $"User {item.RequesterId}";
+        var requester = item.RequesterId is { } requesterId ? Context.Guild.GetUser(requesterId.Value) : null;
+        var requesterName = item.IsAutoplay ? "Autoplay" : requester?.DisplayName ?? $"User {item.RequesterId}";
         var track = item.Track;
         await CompleteAsync(embed: new EmbedBuilder()
             .WithTitle(player.IsPaused ? "Paused" : "Now playing")
             .WithDescription($"**{MessageFormatting.Link(track.Title, track.SourceUrl)}**")
             .WithThumbnailUrl(track.ThumbnailUrl)
             .AddField("Artist", TrackFormatting.Artists(track), true)
-            .AddField("Requested by", MessageFormatting.Text(requesterName), true)
-            .AddField("Requested at", item.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true)
+            .AddField(item.IsAutoplay ? "Added by" : "Requested by", MessageFormatting.Text(requesterName), true)
+            .AddField(item.IsAutoplay ? "Added at" : "Requested at", item.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true)
             .AddField("Progress", TrackFormatting.ProgressBar(player.PlaybackPosition, track.Duration))
             .Build());
     }

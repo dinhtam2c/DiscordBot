@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Modules.Music.Features.Playback;
 using Modules.Music.Features.Notifications;
+using Modules.Music.Features.Autoplay;
 using Modules.Music.Features.Queue;
 using Modules.Music.Features.Search;
 using Modules.Music.Features.Shortcuts;
@@ -32,7 +33,7 @@ internal static class DependencyInjection
         services.AddSingleton<MusicShortcutCatalog>();
         services.Configure<DiscordCommandOptions>(options =>
         {
-            options.Modules.AddRange([typeof(PlaybackCommands), typeof(QueueCommands), typeof(VoiceCommands), typeof(SearchCommands)]);
+            options.Modules.AddRange([typeof(PlaybackCommands), typeof(QueueCommands), typeof(VoiceCommands), typeof(SearchCommands), typeof(AutoplayCommands)]);
             options.ConfigureModules.Add(ShortcutCommands.RegisterAsync);
         });
         return services;

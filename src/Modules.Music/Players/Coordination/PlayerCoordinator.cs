@@ -7,12 +7,14 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Modules.Music.Playback;
 using Modules.Music.Features.Notifications;
+using Modules.Music.Tracks.Youtube;
 
 namespace Modules.Music.Players.Coordination;
 
-internal sealed class PlayerCoordinator(
+internal sealed partial class PlayerCoordinator(
     IServiceScopeFactory scopes,
     IPlaybackEngine playback,
+    IYoutubeRecommendations recommendations,
     IVoiceSessionManager voice,
     IVoiceChannelPresence presence,
     MusicNotifications notifications,
@@ -50,7 +52,13 @@ internal sealed class PlayerCoordinator(
     public Task<long> BeginEnqueueAsync(GuildId guildId, CancellationToken ct)
     {
         var mailbox = GetMailbox(guildId);
-        return mailbox.SendAsync(_ => Task.FromResult(mailbox.EnqueueRevision), ct);
+        return mailbox.SendAsync(_ =>
+        {
+            ct.ThrowIfCancellationRequested();
+            mailbox.Autoplay.PendingEnqueues++;
+            mailbox.Autoplay.Cancel();
+            return Task.FromResult(mailbox.EnqueueRevision);
+        }, _shutdown.Token);
     }
 
     public Task<SeekPreparation> BeginSeekAsync(GuildId guildId, TimeSpan position, CancellationToken ct)
@@ -146,6 +154,8 @@ internal sealed class PlayerCoordinator(
         {
             mailbox.EnqueueRevision++;
             mailbox.SeekRevision++;
+            mailbox.Autoplay.Cancel();
+            mailbox.Autoplay.Active = false;
         }
 
         switch (request)
@@ -174,6 +184,22 @@ internal sealed class PlayerCoordinator(
                 var clock = services.GetRequiredService<IClock>();
                 var items = enqueue.Tracks.Select(track => new QueueItem(track, enqueue.RequesterId, clock.UtcNow)).ToArray();
                 player.Enqueue(items, enqueue.PlayNext);
+                break;
+
+            case SetAutoplay autoplay:
+                player = await GetOrCreateAsync(player, guildId, repository, ct);
+                player.SetAutoplay(autoplay.Enabled);
+                if (!autoplay.Enabled)
+                {
+                    mailbox.Autoplay.Cancel();
+                    mailbox.Autoplay.Active = false;
+                    mailbox.Autoplay.Ready = null;
+                }
+                else
+                {
+                    mailbox.Autoplay.Active = player.HasCurrentTrack;
+                    mailbox.Autoplay.Failures = 0;
+                }
                 break;
 
             case SetVolume volume:
@@ -241,7 +267,10 @@ internal sealed class PlayerCoordinator(
 
         changed |= SynchronizePresence(player);
         if (request is RefreshVoicePresence && !changed)
+        {
+            SynchronizeAutoplay(guildId, mailbox, player);
             return new PlayerResult(previousItem, wasPaused, player?.QueueCount ?? 0, false);
+        }
 
         if (changed)
             await unitOfWork.SaveChangesAsync(ct);
@@ -258,6 +287,7 @@ internal sealed class PlayerCoordinator(
             else if (player.CurrentQueueItem.Id == previousItem.Id && player.IsPaused != wasPaused)
                 notifications.Updated(guildId, player.CurrentQueueItem, player.IsPaused);
         }
+        SynchronizeAutoplay(guildId, mailbox, player);
         return new PlayerResult(previousItem, wasPaused, player?.QueueCount ?? 0,
             previousItem is null && player?.HasCurrentTrack == true)
         {
@@ -303,7 +333,10 @@ internal sealed class PlayerCoordinator(
         var repository = scope.ServiceProvider.GetRequiredService<IPlayerRepository>();
         var player = await repository.GetByIdAsync(started.GuildId, ct);
         if (player?.CurrentQueueItem is { } item && item.Id == started.QueueItemId)
+        {
             notifications.Playing(started.GuildId, item, player.IsPaused);
+            SynchronizeAutoplay(started.GuildId, GetMailbox(started.GuildId), player);
+        }
     }
 
     private void PostPlaybackEnded(PlaybackEnded ended)
@@ -343,8 +376,13 @@ internal sealed class PlayerCoordinator(
                     await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
                 }
                 pending.Saved = true;
+                var autoplay = GetMailbox(ended.GuildId).Autoplay;
                 if (failedItem is not null)
-                    notifications.Failed(ended.GuildId, failedItem, ended.Error);
+                {
+                    if (failedItem.IsAutoplay) autoplay.Failures++;
+                    else notifications.Failed(ended.GuildId, failedItem, ended.Error);
+                }
+                else if (ended.Reason == PlaybackEndReason.Completed) autoplay.Failures = 0;
                 if (player?.HasCurrentTrack == false)
                     notifications.Ended(ended.GuildId, stopped: false,
                         position: playback.GetPosition(ended.GuildId, ended.QueueItemId),
@@ -357,6 +395,7 @@ internal sealed class PlayerCoordinator(
             await playback.CompleteAsync(ended.GuildId, ended.SessionId);
             await voice.RequestStatusAsync(ended.GuildId, player?.CurrentQueueItem?.Track.Title, ct);
             await playback.ApplyAsync(ended.GuildId, PlaybackTarget.From(player), PostPlaybackStarted, PostPlaybackEnded, ct);
+            SynchronizeAutoplay(ended.GuildId, GetMailbox(ended.GuildId), player);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
         catch (Exception ex)

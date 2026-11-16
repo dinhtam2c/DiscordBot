@@ -15,6 +15,10 @@ internal sealed class Player
 
     public Volume Volume { get; private set; } = Volume.Create(50);
 
+    public bool AutoplayEnabled { get; private set; }
+
+    public void SetAutoplay(bool enabled) => AutoplayEnabled = enabled;
+
     public LoopMode LoopMode { get; private set; }
 
     public bool HasCurrentTrack => CurrentTrack is not null;
@@ -49,6 +53,7 @@ internal sealed class Player
             CurrentQueueItem = CurrentQueueItem,
             Volume = Volume,
             LoopMode = LoopMode,
+            AutoplayEnabled = AutoplayEnabled,
             IsManuallyPaused = IsManuallyPaused,
             IsPausedForEmptyChannel = IsPausedForEmptyChannel,
         };
