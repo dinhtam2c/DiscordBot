@@ -28,7 +28,7 @@ internal sealed class PlaybackCommands(
     private async Task EnqueueAsync(string query, EnqueueTracksMode mode)
     {
         var result = await enqueueTracks.ExecuteAsync(new EnqueueTracksInput(
-            GuildId, UserId, new ChannelId(Context.Channel.Id), Context.Interaction.Id, query, mode), Ct);
+            GuildId, UserId, new ChannelId(Context.Channel.Id), Context.Interaction.Id, mode), query, Ct);
         await CompleteAsync(embed: EnqueueTracksResponse.Create(result, mode));
     }
 

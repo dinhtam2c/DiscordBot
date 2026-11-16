@@ -4,6 +4,8 @@ internal sealed class TrackResolverFactory(IEnumerable<ITrackResolver> resolvers
 {
     private readonly Dictionary<TrackSource, ITrackResolver> _resolvers = resolvers.ToDictionary(r => r.Source);
 
+    public ITrackResolver Select(TrackSource source) => _resolvers[source];
+
     public ITrackResolver Select(string query)
     {
         if (Uri.TryCreate(query.Trim(), UriKind.Absolute, out var uri))

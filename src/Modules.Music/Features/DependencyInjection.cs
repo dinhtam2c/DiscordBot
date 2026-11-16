@@ -4,6 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Modules.Music.Features.Playback;
 using Modules.Music.Features.Notifications;
 using Modules.Music.Features.Queue;
+using Modules.Music.Features.Search;
 using Modules.Music.Features.Shortcuts;
 using Modules.Music.Features.Voice;
 
@@ -15,6 +16,7 @@ internal static class DependencyInjection
     {
         services.AddScoped<EnqueueTracksUseCase>();
         services.AddScoped<SeekPlaybackUseCase>();
+        services.AddSingleton<SearchResults>();
         services.AddHostedService<VoicePresenceObserver>();
         services.AddSingleton<MusicNotifications>();
         services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<MusicNotifications>());
@@ -30,8 +32,8 @@ internal static class DependencyInjection
         services.AddSingleton<MusicShortcutCatalog>();
         services.Configure<DiscordCommandOptions>(options =>
         {
-            options.Modules.AddRange([typeof(PlaybackCommands), typeof(QueueCommands), typeof(VoiceCommands)]);
-            options.EphemeralCommands.UnionWith(["nowplaying", "queue", "resume"]);
+            options.Modules.AddRange([typeof(PlaybackCommands), typeof(QueueCommands), typeof(VoiceCommands), typeof(SearchCommands)]);
+            options.EphemeralCommands.UnionWith(["nowplaying", "queue", "resume", "search"]);
             options.ConfigureModules.Add(ShortcutCommands.RegisterAsync);
         });
         return services;

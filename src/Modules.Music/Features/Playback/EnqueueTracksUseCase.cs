@@ -19,7 +19,6 @@ internal sealed record EnqueueTracksInput(
     UserId RequesterId,
     ChannelId TextChannelId,
     ulong InteractionId,
-    string Query,
     EnqueueTracksMode Mode);
 
 internal sealed record EnqueueTracksResult(
@@ -34,16 +33,29 @@ internal sealed class EnqueueTracksUseCase(
     MusicNotifications notifications,
     ILogger<EnqueueTracksUseCase> logger)
 {
-    public async Task<EnqueueTracksResult> ExecuteAsync(EnqueueTracksInput input, CancellationToken ct)
+    public async Task<EnqueueTracksResult> ExecuteAsync(EnqueueTracksInput input, string query, CancellationToken ct)
     {
         notifications.SetChannel(input.GuildId, input.TextChannelId, input.InteractionId);
         var revision = await players.BeginEnqueueAsync(input.GuildId, ct);
-        var resolved = await resolverFactory.Select(input.Query).ResolveAsync(input.Query, ct);
+        var resolved = await resolverFactory.Select(query).ResolveAsync(query, ct);
+        logger.LogInformation("Resolved {TrackCount} tracks for query '{Query}'.", resolved.Tracks.Count, query);
+        return await EnqueueAsync(input, resolved, revision, ct);
+    }
+
+    public async Task<EnqueueTracksResult> ExecuteAsync(EnqueueTracksInput input, IReadOnlyList<Track> tracks, CancellationToken ct)
+    {
+        notifications.SetChannel(input.GuildId, input.TextChannelId, input.InteractionId);
+        var revision = await players.BeginEnqueueAsync(input.GuildId, ct);
+        return await EnqueueAsync(input, new TrackResolutionResult(tracks), revision, ct);
+    }
+
+    private async Task<EnqueueTracksResult> EnqueueAsync(EnqueueTracksInput input, TrackResolutionResult resolved,
+        long revision, CancellationToken ct)
+    {
         var tracks = resolved.Tracks;
         if (tracks.Count == 0)
             throw new UserFriendlyException("Couldn't find any songs. Try another song name or link.");
 
-        logger.LogInformation("Resolved {TrackCount} tracks for query '{Query}'.", tracks.Count, input.Query);
         var result = await players.ExecuteAsync(input.GuildId,
             new EnqueueTracks(tracks.ToArray(), input.RequesterId, input.Mode == EnqueueTracksMode.Next, revision), ct);
 
