@@ -38,6 +38,9 @@ public static class DependencyInjection
             new InteractionServiceConfig { DefaultRunMode = RunMode.Sync, AutoServiceScopes = false }));
         services.AddSingleton<DiscordInteractionAdapter>();
         services.AddSingleton<DiscordCommandRegistrar>();
+        services.AddSingleton<DiscordVoiceChannelPresence>();
+        services.AddSingleton<IVoiceChannelPresence>(sp => sp.GetRequiredService<DiscordVoiceChannelPresence>());
+        services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<DiscordVoiceChannelPresence>());
         // Register before voice and module workers so the gateway stops after their cleanup.
         services.AddHostedService<DiscordGateway>();
         services.AddSingleton<DiscordMessageQueue>();

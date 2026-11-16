@@ -19,7 +19,9 @@ internal sealed class Player
 
     public bool HasCurrentTrack => CurrentTrack is not null;
 
-    public bool IsPaused { get; private set; }
+    public bool IsManuallyPaused { get; private set; }
+    public bool IsPausedForEmptyChannel { get; private set; }
+    public bool IsPaused => HasCurrentTrack && (IsManuallyPaused || IsPausedForEmptyChannel);
 
     private readonly PlaybackQueue _queue = new();
 
@@ -47,7 +49,8 @@ internal sealed class Player
             CurrentQueueItem = CurrentQueueItem,
             Volume = Volume,
             LoopMode = LoopMode,
-            IsPaused = IsPaused,
+            IsManuallyPaused = IsManuallyPaused,
+            IsPausedForEmptyChannel = IsPausedForEmptyChannel,
         };
 
         copy._queue.CopyFrom(_queue);
@@ -86,25 +89,33 @@ internal sealed class Player
 
     public bool Pause()
     {
-        if (!HasCurrentTrack || IsPaused)
+        if (!HasCurrentTrack || IsManuallyPaused)
             return false;
 
-        IsPaused = true;
+        IsManuallyPaused = true;
         return true;
     }
 
     public bool Resume()
     {
-        if (!HasCurrentTrack || !IsPaused)
+        if (!HasCurrentTrack || !IsManuallyPaused)
             return false;
 
-        IsPaused = false;
+        IsManuallyPaused = false;
+        return true;
+    }
+
+    public bool SetHasListeners(bool hasListeners)
+    {
+        if (IsPausedForEmptyChannel == !hasListeners)
+            return false;
+        IsPausedForEmptyChannel = !hasListeners;
         return true;
     }
 
     public void Skip()
     {
-        IsPaused = false;
+        IsManuallyPaused = false;
 
         if (_queue.Count > 0)
         {
@@ -118,7 +129,7 @@ internal sealed class Player
 
     public void FinishCurrentTrack()
     {
-        IsPaused = false;
+        IsManuallyPaused = false;
         if (LoopMode == LoopMode.Track && HasCurrentTrack)
         {
             return;
@@ -132,7 +143,7 @@ internal sealed class Player
 
     public void Stop()
     {
-        IsPaused = false;
+        IsManuallyPaused = false;
 
         CurrentQueueItem = null;
         _queue.Clear();

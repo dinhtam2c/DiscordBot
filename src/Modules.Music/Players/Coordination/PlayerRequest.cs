@@ -10,6 +10,7 @@ internal sealed record EnqueueTracks(IReadOnlyList<Track> Tracks, UserId Request
     long? PreparationRevision = null) : PlayerRequest;
 internal sealed record PausePlayback : PlayerRequest;
 internal sealed record ResumePlayback : PlayerRequest;
+internal sealed record RefreshVoicePresence : PlayerRequest;
 internal sealed record SeekPreparation(QueueItem Item, long Revision, Guid SessionId);
 internal sealed record SeekPlayback(TimeSpan Position, Tracks.AudioSources.ResolvedAudioSource Source,
     SeekPreparation Preparation) : PlayerRequest
@@ -34,4 +35,6 @@ internal sealed record MoveTrack(long Index, long NewIndex) : PlayerRequest;
 internal sealed record PlayerResult(QueueItem? PreviousItem, bool WasPaused, int QueueCount, bool StartsPlayback)
 {
     public bool HadCurrentTrack => PreviousItem is not null;
+    public bool IsPausedForEmptyChannel { get; init; }
+    public bool WasManuallyPaused { get; init; }
 }

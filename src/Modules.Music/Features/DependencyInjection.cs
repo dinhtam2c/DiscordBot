@@ -15,6 +15,7 @@ internal static class DependencyInjection
     {
         services.AddScoped<EnqueueTracksUseCase>();
         services.AddScoped<SeekPlaybackUseCase>();
+        services.AddHostedService<VoicePresenceObserver>();
         services.AddSingleton<MusicNotifications>();
         services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<MusicNotifications>());
         services.AddOptions<MusicShortcutOptions>()
@@ -30,7 +31,7 @@ internal static class DependencyInjection
         services.Configure<DiscordCommandOptions>(options =>
         {
             options.Modules.AddRange([typeof(PlaybackCommands), typeof(QueueCommands), typeof(VoiceCommands)]);
-            options.EphemeralCommands.UnionWith(["nowplaying", "queue"]);
+            options.EphemeralCommands.UnionWith(["nowplaying", "queue", "resume"]);
             options.ConfigureModules.Add(ShortcutCommands.RegisterAsync);
         });
         return services;

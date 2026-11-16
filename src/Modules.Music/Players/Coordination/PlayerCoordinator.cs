@@ -14,6 +14,7 @@ internal sealed class PlayerCoordinator(
     IServiceScopeFactory scopes,
     IPlaybackEngine playback,
     IVoiceSessionManager voice,
+    IVoiceChannelPresence presence,
     MusicNotifications notifications,
     IAppLifetime lifetime,
     ILogger<PlayerCoordinator> logger) : IHostedService, IAsyncDisposable
@@ -23,6 +24,21 @@ internal sealed class PlayerCoordinator(
     private readonly CancellationTokenSource _shutdown = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Stopping);
     private bool _stopping;
     private Task? _stopTask;
+
+    public void RefreshVoicePresence(GuildId guildId)
+    {
+        lock (_sync)
+        {
+            // Voice events never create players or wait on their mailbox.
+            if (!_stopping && _mailboxes.TryGetValue(guildId, out var mailbox))
+                mailbox.Post(ct => HandleAsync(guildId, mailbox, new RefreshVoicePresence(), null, ct));
+        }
+    }
+
+    private bool SynchronizePresence(Player? player)
+        => player?.VoiceChannelId is { } channel
+            && presence.HasListeners(player.GuildId, channel) is { } hasListeners
+            && player.SetHasListeners(hasListeners);
 
     public Task<PlayerResult> ExecuteAsync(GuildId guildId, PlayerRequest request, CancellationToken ct,
         Guid? expectedQueueItemId = null)
@@ -110,6 +126,8 @@ internal sealed class PlayerCoordinator(
             if (item.Id != seek.Preparation.Item.Id)
                 throw new UserFriendlyException("This song is no longer playing.");
             SeekPlayback.ValidatePosition(seek.Position, item.Track.Duration);
+            if (SynchronizePresence(player))
+                await unitOfWork.SaveChangesAsync(ct);
             await playback.SeekAsync(guildId, PlaybackTarget.From(player), seek.Position, seek.Source, PostPlaybackEnded, ct);
             notifications.Updated(guildId, item, player!.IsPaused);
             return new PlayerResult(item, player.IsPaused, player.QueueCount, false);
@@ -117,6 +135,7 @@ internal sealed class PlayerCoordinator(
 
         var previousItem = player?.CurrentQueueItem;
         var wasPaused = player?.IsPaused ?? false;
+        var wasManuallyPaused = player?.IsManuallyPaused ?? false;
         var previousChannel = player?.VoiceChannelId;
         var existed = player is not null;
         var changed = true;
@@ -131,6 +150,9 @@ internal sealed class PlayerCoordinator(
 
         switch (request)
         {
+            case RefreshVoicePresence _:
+                changed = false;
+                break;
             case JoinVoice join:
                 player = await GetOrCreateAsync(player, guildId, repository, ct);
                 player.Join(join.ChannelId);
@@ -217,6 +239,10 @@ internal sealed class PlayerCoordinator(
                 break;
         }
 
+        changed |= SynchronizePresence(player);
+        if (request is RefreshVoicePresence && !changed)
+            return new PlayerResult(previousItem, wasPaused, player?.QueueCount ?? 0, false);
+
         if (changed)
             await unitOfWork.SaveChangesAsync(ct);
 
@@ -233,7 +259,11 @@ internal sealed class PlayerCoordinator(
                 notifications.Updated(guildId, player.CurrentQueueItem, player.IsPaused);
         }
         return new PlayerResult(previousItem, wasPaused, player?.QueueCount ?? 0,
-            previousItem is null && player?.HasCurrentTrack == true);
+            previousItem is null && player?.HasCurrentTrack == true)
+        {
+            IsPausedForEmptyChannel = player?.IsPausedForEmptyChannel ?? false,
+            WasManuallyPaused = wasManuallyPaused,
+        };
     }
 
     private async Task ApplyAsync(
@@ -309,6 +339,7 @@ internal sealed class PlayerCoordinator(
                     }
                     else
                         player.FinishCurrentTrack();
+                    SynchronizePresence(player);
                     await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
                 }
                 pending.Saved = true;
@@ -321,6 +352,8 @@ internal sealed class PlayerCoordinator(
             }
 
             // Once saved, retries only synchronize the latest stored target. Never advance twice.
+            if (SynchronizePresence(player))
+                await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
             await playback.CompleteAsync(ended.GuildId, ended.SessionId);
             await voice.RequestStatusAsync(ended.GuildId, player?.CurrentQueueItem?.Track.Title, ct);
             await playback.ApplyAsync(ended.GuildId, PlaybackTarget.From(player), PostPlaybackStarted, PostPlaybackEnded, ct);

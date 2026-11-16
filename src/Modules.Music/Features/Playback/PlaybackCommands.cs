@@ -38,17 +38,20 @@ internal sealed class PlaybackCommands(
         var result = await players.ExecuteAsync(GuildId, new PausePlayback(), Ct);
         await CompleteAsync(!result.HadCurrentTrack
             ? "Nothing is playing right now."
-            : result.WasPaused ? "The music is already paused." : "Paused the music.");
+            : result.WasManuallyPaused ? "The music is already paused." : "Paused the music.");
     }
 
     [SlashCommand("resume", "Resume the music.")]
     public async Task ResumeAsync()
     {
         var result = await players.ExecuteAsync(GuildId, new ResumePlayback(), Ct);
-        await CompleteAsync(!result.HadCurrentTrack
-            ? "Nothing is playing right now."
-            : !result.WasPaused ? "The music isn't paused." : "Resumed the music.");
+        await CompleteAsync(ResumeResponse(result));
     }
+
+    private static string ResumeResponse(PlayerResult result)
+        => !result.HadCurrentTrack ? "Nothing is playing right now."
+            : result.IsPausedForEmptyChannel ? "Playback will resume when someone joins the voice channel."
+            : !result.WasPaused ? "The music isn't paused." : "Resumed the music.";
 
     [SlashCommand("skip", "Skip the current song.")]
     public async Task SkipAsync()
@@ -78,7 +81,12 @@ internal sealed class PlaybackCommands(
     public Task PauseButtonAsync(string itemId) => ControlAsync(itemId, new PausePlayback());
 
     [ComponentInteraction("music:resume:*")]
-    public Task ResumeButtonAsync(string itemId) => ControlAsync(itemId, new ResumePlayback());
+    public async Task ResumeButtonAsync(string itemId)
+    {
+        var result = await ControlAsync(itemId, new ResumePlayback());
+        await FollowupAsync(ResumeResponse(result), ephemeral: true, allowedMentions: AllowedMentions.None,
+            options: new RequestOptions { CancelToken = Ct });
+    }
 
     [ComponentInteraction("music:skip:*")]
     public Task SkipButtonAsync(string itemId) => ControlAsync(itemId, new SkipTrack());
@@ -86,7 +94,7 @@ internal sealed class PlaybackCommands(
     [ComponentInteraction("music:stop:*")]
     public Task StopButtonAsync(string itemId) => ControlAsync(itemId, new StopPlayback());
 
-    private Task ControlAsync(string itemId, PlayerRequest request)
+    private Task<PlayerResult> ControlAsync(string itemId, PlayerRequest request)
     {
         if (!Guid.TryParseExact(itemId, "N", out var id))
             throw new UserFriendlyException("These controls are no longer available. Use `/nowplaying` to see what's playing.");
