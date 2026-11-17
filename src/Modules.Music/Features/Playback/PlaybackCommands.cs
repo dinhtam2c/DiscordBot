@@ -57,11 +57,14 @@ internal sealed class PlaybackCommands(
     [SlashCommand("skip", "Skip the current song.")]
     public async Task SkipAsync()
     {
-        var result = await players.ExecuteAsync(GuildId, new SkipTrack(), Ct);
-        await CompleteAsync(result.PreviousItem?.Track is { } skipped
-            ? $"Skipped **{MessageFormatting.Link(skipped.Title, skipped.SourceUrl)}**."
-            : "Nothing is playing right now.");
+        var result = await players.ExecuteAsync(GuildId, new SkipTrack(UserId), Ct);
+        await CompleteAsync(SkipResponse(result));
     }
+
+    private static string SkipResponse(PlayerResult result)
+        => result.PreviousItem?.Track is { } skipped
+            ? $"Skipped **{MessageFormatting.Text(skipped.Title)}**."
+            : "Nothing is playing right now.";
 
     [SlashCommand("seek", "Jump to a position in the current song.")]
     public async Task SeekAsync([Summary(description: "Position in seconds, mm:ss, or hh:mm:ss, for example 90 or 1:30.")] string position)
@@ -82,15 +85,15 @@ internal sealed class PlaybackCommands(
     public Task PauseButtonAsync(string itemId) => ControlAsync(itemId, new PausePlayback());
 
     [ComponentInteraction("music:resume:*")]
-    public async Task ResumeButtonAsync(string itemId)
-    {
-        var result = await ControlAsync(itemId, new ResumePlayback());
-        await FollowupAsync(ResumeResponse(result), ephemeral: true, allowedMentions: AllowedMentions.None,
-            options: new RequestOptions { CancelToken = Ct });
-    }
+    public Task ResumeButtonAsync(string itemId) => ControlAsync(itemId, new ResumePlayback());
 
     [ComponentInteraction("music:skip:*")]
-    public Task SkipButtonAsync(string itemId) => ControlAsync(itemId, new SkipTrack());
+    public async Task SkipButtonAsync(string itemId)
+    {
+        var result = await ControlAsync(itemId, new SkipTrack(UserId));
+        await FollowupAsync(SkipResponse(result), ephemeral: false, allowedMentions: AllowedMentions.None,
+            options: new RequestOptions { CancelToken = Ct });
+    }
 
     [ComponentInteraction("music:autoplay:*")]
     public Task AutoplayButtonAsync(string itemId) => ControlAsync(itemId, new ToggleAutoplay());

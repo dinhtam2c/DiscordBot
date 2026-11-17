@@ -23,7 +23,7 @@ internal sealed record SeekPlayback(TimeSpan Position, Tracks.AudioSources.Resol
             throw new Application.Abstractions.UserFriendlyException("Choose a position from 0:00 to before the end of this song.");
     }
 }
-internal sealed record SkipTrack : PlayerRequest;
+internal sealed record SkipTrack(UserId SkippedBy) : PlayerRequest;
 internal sealed record StopPlayback : PlayerRequest;
 internal sealed record ToggleAutoplay : PlayerRequest;
 internal sealed record CycleLoopMode : PlayerRequest;

@@ -300,7 +300,8 @@ internal sealed partial class PlayerCoordinator(
         if (previousItem is not null && previousSessionId is { } sessionId
             && request is SkipTrack or StopPlayback or LeaveVoice)
             mailbox.History.Finish(sessionId, previousItem,
-                request is SkipTrack ? PlaybackHistoryStatus.Skipped : PlaybackHistoryStatus.Stopped, clock.UtcNow);
+                request is SkipTrack ? PlaybackHistoryStatus.Skipped : PlaybackHistoryStatus.Stopped, clock.UtcNow,
+                request is SkipTrack skip ? skip.SkippedBy : null);
 
         // Persist first. The mailbox holds the next request until runtime has accepted this target.
         var endedPosition = previousItem is not null && player?.CurrentQueueItem is null

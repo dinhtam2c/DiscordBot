@@ -1,11 +1,16 @@
 using Modules.Music.Tracks;
+using Domain.ValueObjects;
 
 namespace Modules.Music.Players;
 
 internal enum PlaybackHistoryStatus { Playing, Completed, Skipped, Failed, Stopped }
 
 internal sealed record PlaybackHistoryEntry(Guid Id, Guid SessionId, QueueItem Item,
-    DateTimeOffset StartedAt, DateTimeOffset? EndedAt, PlaybackHistoryStatus Status);
+    DateTimeOffset StartedAt, DateTimeOffset? EndedAt, PlaybackHistoryStatus Status)
+{
+    public UserId? RequesterId => Item.RequesterId;
+    public UserId? SkippedBy { get; init; }
+}
 
 // One bounded history per guild. Read and written exclusively inside its mailbox.
 internal sealed class PlaybackHistory(int capacity)
@@ -28,12 +33,12 @@ internal sealed class PlaybackHistory(int capacity)
         if (_entries.Count > capacity) _entries.RemoveAt(0);
     }
 
-    public void Finish(Guid sessionId, QueueItem item, PlaybackHistoryStatus status, DateTimeOffset now)
+    public void Finish(Guid sessionId, QueueItem item, PlaybackHistoryStatus status, DateTimeOffset now, UserId? skippedBy = null)
     {
         Start(sessionId, item, now); // Also capture attempts that failed before a started callback.
         var index = _entries.FindIndex(entry => entry.SessionId == sessionId);
         if (_entries[index].Status != PlaybackHistoryStatus.Playing) return;
-        _entries[index] = _entries[index] with { Status = status, EndedAt = now };
+        _entries[index] = _entries[index] with { Status = status, EndedAt = now, SkippedBy = status == PlaybackHistoryStatus.Skipped ? skippedBy : null };
     }
 
     public void Rebind(Guid oldSessionId, Guid newSessionId)
