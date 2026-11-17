@@ -44,11 +44,6 @@ internal sealed partial class PlayerCoordinator
             state.Cancel();
             return;
         }
-        if (state.Failures >= 3)
-        {
-            StopAutoplay(guildId, mailbox);
-            return;
-        }
         if (state.Ready is { } ready && IsExcluded(mailbox, ready)) state.Ready = null;
         if (state.Ready is not null)
         {
@@ -60,21 +55,22 @@ internal sealed partial class PlayerCoordinator
             return;
         }
         if (state.Work is not null || state.Seed is null) return;
-        if (state.Candidates.Count == 0 && state.LoadedLimit >= 75)
-        {
-            if (!player.HasCurrentTrack) StopAutoplay(guildId, mailbox);
-            return;
-        }
         var seed = state.Seed;
         var history = mailbox.History.RecentTracks(historyOptions.Value.AutoplayWindow);
         var candidates = state.Candidates.ToArray();
+        var discovery = state.LoadedLimit >= 75 && candidates.Length == 0;
+        var attempt = state.DiscoveryAttempt;
+        var pivots = history.Where(track => track.Source == TrackSource.Youtube
+            && !YoutubeRecommendations.SameSong(seed, track)).Reverse().DistinctBy(track => track.Id).ToArray();
+        var discoverySeed = discovery && pivots.Length > 0 ? pivots[attempt % pivots.Length] : seed;
+        var failures = state.Failures;
         var limit = state.LoadedLimit == 0 ? 25 : 75;
         var (revision, work) = state.Begin(_shutdown.Token);
-        state.Preparation = PrepareAutoplayAsync(guildId, mailbox, seed, history, candidates, limit, revision, work);
+        state.Preparation = PrepareAutoplayAsync(guildId, mailbox, seed, history, candidates, discoverySeed, discovery, attempt, failures, limit, revision, work);
     }
 
     private async Task PrepareAutoplayAsync(GuildId guildId, PlayerMailbox mailbox, Track seed,
-        Track[] history, Track[] cached, int limit, long revision, CancellationTokenSource work)
+        Track[] history, Track[] cached, Track discoverySeed, bool discovery, int attempt, int failures, int limit, long revision, CancellationTokenSource work)
     {
         Track? selected = null;
         Exception? error = null;
@@ -82,9 +78,14 @@ internal sealed partial class PlayerCoordinator
         try
         {
             var ct = work.Token;
+            if (failures > 0)
+                await Task.Delay(TimeSpan.FromSeconds(Math.Min(30, 1 << Math.Min(failures - 1, 5))), ct);
             // No context or mutable session leaves the mailbox.
-            var tracks = cached.Length > 0 ? cached : await recommendations.GetAsync(seed, limit, ct);
-            remaining = new Queue<Track>(tracks.Where(track => !history.Any(old => YoutubeRecommendations.SameSong(old, track))));
+            var tracks = cached.Length > 0 ? cached : discovery
+                ? await recommendations.ExploreAsync(discoverySeed, attempt, ct)
+                : await recommendations.GetAsync(seed, limit, ct);
+            var available = tracks.ToArray();
+            remaining = new Queue<Track>(available.Where(track => !YoutubeRecommendations.SameSong(seed, track) && !history.Any(old => YoutubeRecommendations.SameSong(old, track))));
             var attempts = 0;
             while (attempts++ < 5 && remaining.TryDequeue(out var candidate))
             {
@@ -92,7 +93,7 @@ internal sealed partial class PlayerCoordinator
                 try
                 {
                     var resolved = await recommendations.ResolveAsync(candidate, ct);
-                    if (resolved is not null && YoutubeRecommendations.Suitable(seed, resolved)
+                    if (resolved is not null && !YoutubeRecommendations.SameSong(seed, resolved) && YoutubeRecommendations.Suitable(seed, resolved)
                         && !history.Any(old => YoutubeRecommendations.SameSong(old, resolved)))
                     { selected = resolved; break; }
                 }
@@ -116,14 +117,14 @@ internal sealed partial class PlayerCoordinator
                         state.Complete();
                         if (error is not null)
                         {
-                            logger.LogWarning(error, "Failed to prepare autoplay for guild {GuildId}.", guildId);
-                            StopAutoplay(guildId, mailbox);
-                            return false;
+                            logger.LogDebug(error, "Autoplay recommendations are unavailable for guild {GuildId}. Retrying discovery.", guildId);
                         }
                         if (cached.Length == 0) state.LoadedLimit = limit;
                         state.Candidates.Clear();
                         foreach (var track in remaining) state.Candidates.Enqueue(track);
                         state.Ready = selected;
+                        if (discovery) state.DiscoveryAttempt = (attempt + 1) % 10000;
+                        if (selected is null) state.Failures = Math.Min(state.Failures + 1, 30);
                         await AcceptAutoplayAsync(guildId, mailbox, revision, ct);
                         return true;
                     }, _shutdown.Token);
@@ -161,14 +162,7 @@ internal sealed partial class PlayerCoordinator
     }
 
     private bool IsExcluded(PlayerMailbox mailbox, Track track)
-        => mailbox.History.RecentTracks(historyOptions.Value.AutoplayWindow).Any(previous => YoutubeRecommendations.SameSong(previous, track));
+        => mailbox.Autoplay.Seed is { } seed && YoutubeRecommendations.SameSong(seed, track)
+            || mailbox.History.RecentTracks(historyOptions.Value.AutoplayWindow).Any(previous => YoutubeRecommendations.SameSong(previous, track));
 
-    private void StopAutoplay(GuildId guildId, PlayerMailbox mailbox)
-    {
-        var state = mailbox.Autoplay;
-        state.Cancel();
-        state.Active = false;
-        state.Ready = null;
-        notifications.AutoplayStopped(guildId);
-    }
 }

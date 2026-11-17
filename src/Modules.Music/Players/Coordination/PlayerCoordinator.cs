@@ -411,7 +411,7 @@ internal sealed partial class PlayerCoordinator(
                 var autoplay = GetMailbox(ended.GuildId).Autoplay;
                 if (failedItem is not null)
                 {
-                    if (failedItem.IsAutoplay) autoplay.Failures++;
+                    if (failedItem.IsAutoplay) autoplay.Failures = Math.Min(autoplay.Failures + 1, 30);
                     else notifications.Failed(ended.GuildId, failedItem, ended.Error);
                 }
                 else if (ended.Reason == PlaybackEndReason.Completed) autoplay.Failures = 0;

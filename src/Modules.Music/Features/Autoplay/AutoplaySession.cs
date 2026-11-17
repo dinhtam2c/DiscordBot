@@ -12,6 +12,7 @@ internal sealed class AutoplaySession
     public bool Active { get; set; }
     public int Failures { get; set; }
     public int LoadedLimit { get; set; }
+    public int DiscoveryAttempt { get; set; }
     public int PendingEnqueues { get; set; }
     public Queue<Track> Candidates { get; } = new();
     public Track? Ready { get; set; }
@@ -36,6 +37,7 @@ internal sealed class AutoplaySession
             Candidates.Clear();
             Ready = null;
             LoadedLimit = 0;
+            DiscoveryAttempt = 0;
             Failures = 0;
             Active = true;
         }
@@ -48,6 +50,7 @@ internal sealed class AutoplaySession
         Candidates.Clear();
         Ready = null;
         LoadedLimit = 0;
+        DiscoveryAttempt = 0;
         Failures = 0;
     }
 

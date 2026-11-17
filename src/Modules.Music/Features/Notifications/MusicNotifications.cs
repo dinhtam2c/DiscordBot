@@ -52,12 +52,6 @@ internal sealed class MusicNotifications(
             stopped ? NotificationKind.Stopped : completed ? NotificationKind.Completed : NotificationKind.Finished,
             Position: position));
 
-    public void AutoplayStopped(GuildId guildId)
-    {
-        if (_destinations.TryGetValue(guildId, out var destination))
-            Publish(new Notification(guildId, NotificationKind.AutoplayStopped, destination.ChannelId));
-    }
-
     public void Failed(GuildId guildId, QueueItem item, Exception? error)
     {
         if (_destinations.TryGetValue(guildId, out var destination))
@@ -201,11 +195,6 @@ internal sealed class MusicNotifications(
                 }
                 break;
 
-            case NotificationKind.AutoplayStopped:
-                await messages.SendAsync(notification.ChannelId!.Value,
-                    text: "Couldn't continue autoplay. Use `/play` to choose another song.", ct: ct);
-                break;
-
             case NotificationKind.Failed:
                 var item = notification.Item!;
                 await messages.SendAsync(notification.ChannelId!.Value, embed: CreateEmbed("Song skipped", item)
@@ -278,7 +267,7 @@ internal sealed class MusicNotifications(
         public QueueItem Item => Player.CurrentQueueItem!;
         public bool IsPaused => Player.IsPaused;
     }
-    private enum NotificationKind { Started, Updated, Stopped, Finished, Completed, Failed, AutoplayStopped }
+    private enum NotificationKind { Started, Updated, Stopped, Finished, Completed, Failed }
     private sealed record Notification(GuildId GuildId, NotificationKind Kind, ChannelId? ChannelId = null,
         QueueItem? Item = null, Exception? Error = null, TimeSpan? Position = null, PlayerSnapshot? Player = null);
 }
