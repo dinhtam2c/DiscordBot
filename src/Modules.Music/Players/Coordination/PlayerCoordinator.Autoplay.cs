@@ -72,6 +72,7 @@ internal sealed partial class PlayerCoordinator
     private async Task PrepareAutoplayAsync(GuildId guildId, PlayerMailbox mailbox, Track seed,
         Track[] history, Track[] cached, Track discoverySeed, bool discovery, int attempt, int failures, int limit, long revision, CancellationTokenSource work)
     {
+        using var ownedWork = work;
         Track? selected = null;
         Exception? error = null;
         var remaining = new Queue<Track>();
@@ -84,8 +85,7 @@ internal sealed partial class PlayerCoordinator
             var tracks = cached.Length > 0 ? cached : discovery
                 ? await recommendations.ExploreAsync(discoverySeed, attempt, ct)
                 : await recommendations.GetAsync(seed, limit, ct);
-            var available = tracks.ToArray();
-            remaining = new Queue<Track>(available.Where(track => !YoutubeRecommendations.SameSong(seed, track) && !history.Any(old => YoutubeRecommendations.SameSong(old, track))));
+            remaining = new Queue<Track>(tracks.Where(track => !IsExcluded(seed, history, track)));
             var attempts = 0;
             while (attempts++ < 5 && remaining.TryDequeue(out var candidate))
             {
@@ -93,8 +93,7 @@ internal sealed partial class PlayerCoordinator
                 try
                 {
                     var resolved = await recommendations.ResolveAsync(candidate, ct);
-                    if (resolved is not null && !YoutubeRecommendations.SameSong(seed, resolved) && YoutubeRecommendations.Suitable(seed, resolved)
-                        && !history.Any(old => YoutubeRecommendations.SameSong(old, resolved)))
+                    if (resolved is not null && YoutubeRecommendations.Suitable(seed, resolved) && !IsExcluded(seed, history, resolved))
                     { selected = resolved; break; }
                 }
                 catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -103,37 +102,31 @@ internal sealed partial class PlayerCoordinator
         }
         catch (OperationCanceledException) when (work.IsCancellationRequested) { return; }
         catch (Exception ex) { error = ex; }
-        finally
+        // Await acceptance before disposing the token source the mailbox may still cancel.
+        if (work.IsCancellationRequested) return;
+        try
         {
-            // Await mailbox acceptance before disposing the token source it may still cancel.
-            if (!work.IsCancellationRequested)
+            await mailbox.SendAsync(async ct =>
             {
-                try
+                var state = mailbox.Autoplay;
+                if (state.Revision != revision) return false;
+                state.Complete();
+                if (error is not null)
                 {
-                    await mailbox.SendAsync(async ct =>
-                    {
-                        var state = mailbox.Autoplay;
-                        if (state.Revision != revision) return false;
-                        state.Complete();
-                        if (error is not null)
-                        {
-                            logger.LogDebug(error, "Autoplay recommendations are unavailable for guild {GuildId}. Retrying discovery.", guildId);
-                        }
-                        if (cached.Length == 0) state.LoadedLimit = limit;
-                        state.Candidates.Clear();
-                        foreach (var track in remaining) state.Candidates.Enqueue(track);
-                        state.Ready = selected;
-                        if (discovery) state.DiscoveryAttempt = (attempt + 1) % 10000;
-                        if (selected is null) state.Failures = Math.Min(state.Failures + 1, 30);
-                        await AcceptAutoplayAsync(guildId, mailbox, revision, ct);
-                        return true;
-                    }, _shutdown.Token);
+                    logger.LogDebug(error, "Autoplay recommendations are unavailable for guild {GuildId}. Retrying discovery.", guildId);
                 }
-                catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
-                catch (Exception ex) { logger.LogError(ex, "Failed to accept autoplay for guild {GuildId}.", guildId); }
-            }
-            work.Dispose();
+                if (cached.Length == 0) state.LoadedLimit = limit;
+                state.Candidates.Clear();
+                foreach (var track in remaining) state.Candidates.Enqueue(track);
+                state.Ready = selected;
+                if (discovery) state.DiscoveryAttempt = (attempt + 1) % 10000;
+                if (selected is null) state.Failures = Math.Min(state.Failures + 1, 30);
+                await AcceptAutoplayAsync(guildId, mailbox, revision, ct);
+                return true;
+            }, _shutdown.Token);
         }
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+        catch (Exception ex) { logger.LogError(ex, "Failed to accept autoplay for guild {GuildId}.", guildId); }
     }
 
     private async Task AcceptAutoplayAsync(GuildId guildId, PlayerMailbox mailbox, long revision, CancellationToken ct)
@@ -156,13 +149,15 @@ internal sealed partial class PlayerCoordinator
         SynchronizePresence(player);
         await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
         state.Ready = null;
-        state.Observe(player.CurrentQueueItem);
         await ApplyAsync(guildId, player, channel, false, false, ct);
         SynchronizeAutoplay(guildId, mailbox, player);
     }
 
     private bool IsExcluded(PlayerMailbox mailbox, Track track)
-        => mailbox.Autoplay.Seed is { } seed && YoutubeRecommendations.SameSong(seed, track)
-            || mailbox.History.RecentTracks(historyOptions.Value.AutoplayWindow).Any(previous => YoutubeRecommendations.SameSong(previous, track));
+        => IsExcluded(mailbox.Autoplay.Seed, mailbox.History.RecentTracks(historyOptions.Value.AutoplayWindow), track);
+
+    private static bool IsExcluded(Track? seed, IEnumerable<Track> history, Track track)
+        => seed is not null && YoutubeRecommendations.SameSong(seed, track)
+            || history.Any(previous => YoutubeRecommendations.SameSong(previous, track));
 
 }

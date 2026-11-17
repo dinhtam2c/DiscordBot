@@ -46,13 +46,10 @@ internal sealed class PlaybackCommands(
     public async Task ResumeAsync()
     {
         var result = await players.ExecuteAsync(GuildId, new ResumePlayback(), Ct);
-        await CompleteAsync(ResumeResponse(result));
-    }
-
-    private static string ResumeResponse(PlayerResult result)
-        => !result.HadCurrentTrack ? "Nothing is playing right now."
+        await CompleteAsync(!result.HadCurrentTrack ? "Nothing is playing right now."
             : result.IsPausedForEmptyChannel ? "Playback will resume when someone joins the voice channel."
-            : !result.WasPaused ? "The music isn't paused." : "Resumed the music.";
+            : !result.WasPaused ? "The music isn't paused." : "Resumed the music.");
+    }
 
     [SlashCommand("skip", "Skip the current song.")]
     public async Task SkipAsync()

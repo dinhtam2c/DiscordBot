@@ -5,7 +5,7 @@ namespace Modules.Music.Players;
 
 internal enum PlaybackHistoryStatus { Playing, Completed, Skipped, Failed, Stopped }
 
-internal sealed record PlaybackHistoryEntry(Guid Id, Guid SessionId, QueueItem Item,
+internal sealed record PlaybackHistoryEntry(Guid SessionId, QueueItem Item,
     DateTimeOffset StartedAt, DateTimeOffset? EndedAt, PlaybackHistoryStatus Status)
 {
     public UserId? RequesterId => Item.RequesterId;
@@ -29,7 +29,7 @@ internal sealed class PlaybackHistory(int capacity)
             _entries[active] = _entries[active] with { SessionId = sessionId };
             return;
         }
-        _entries.Add(new PlaybackHistoryEntry(Guid.NewGuid(), sessionId, item, now, null, PlaybackHistoryStatus.Playing));
+        _entries.Add(new PlaybackHistoryEntry(sessionId, item, now, null, PlaybackHistoryStatus.Playing));
         if (_entries.Count > capacity) _entries.RemoveAt(0);
     }
 

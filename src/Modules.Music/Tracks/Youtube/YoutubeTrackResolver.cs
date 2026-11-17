@@ -22,20 +22,10 @@ internal sealed class YoutubeTrackResolver(
             || host.EndsWith(".youtube-nocookie.com", StringComparison.OrdinalIgnoreCase);
     }
 
-    public async Task<TrackResolutionResult> ResolveAsync(string query, CancellationToken ct = default)
-    {
-        if (!Uri.TryCreate(query, UriKind.Absolute, out var uri))
-        {
-            return await SearchFirstAsync(query, ct);
-        }
-
-        if (IsPlaylist(uri))
-        {
-            return await ResolvePlaylistAsync(query, ct);
-        }
-
-        return await ResolveVideoAsync(query, ct);
-    }
+    public Task<TrackResolutionResult> ResolveAsync(string query, CancellationToken ct = default)
+        => Uri.TryCreate(query, UriKind.Absolute, out var uri)
+            ? ExecuteAsync(query, noPlaylist: !IsPlaylist(uri), ct)
+            : ExecuteAsync($"ytsearch1:{query}", noPlaylist: true, ct);
 
     public async Task<IReadOnlyList<Track>> SearchAsync(string query, CancellationToken ct = default)
     {
@@ -61,30 +51,6 @@ internal sealed class YoutubeTrackResolver(
             return false;
 
         return true;
-    }
-
-    private Task<TrackResolutionResult> SearchFirstAsync(string query, CancellationToken ct)
-    {
-        return ExecuteAsync(
-            $"ytsearch1:{query}",
-            noPlaylist: true,
-            ct);
-    }
-
-    private Task<TrackResolutionResult> ResolveVideoAsync(string url, CancellationToken ct)
-    {
-        return ExecuteAsync(
-            url,
-            noPlaylist: true,
-            ct);
-    }
-
-    private Task<TrackResolutionResult> ResolvePlaylistAsync(string url, CancellationToken ct)
-    {
-        return ExecuteAsync(
-            url,
-            noPlaylist: false,
-            ct);
     }
 
     private async Task<TrackResolutionResult> ExecuteAsync(string input, bool noPlaylist, CancellationToken ct)

@@ -12,7 +12,7 @@ namespace Modules.Music.Features.Search;
 [CommandContextType(InteractionContextType.Guild)]
 internal sealed class SearchCommands(
     ITrackResolverFactory resolvers,
-    TrackSelections results,
+    SearchResults results,
     EnqueueTracksUseCase enqueueTracks,
     IAppLifetime lifetime) : DiscordCommands(lifetime)
 {

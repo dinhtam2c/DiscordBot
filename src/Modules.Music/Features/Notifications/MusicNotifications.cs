@@ -36,14 +36,14 @@ internal sealed class MusicNotifications(
     public void Playing(GuildId guildId, PlayerSnapshot player)
     {
         if (_destinations.TryGetValue(guildId, out var destination) && player.CurrentQueueItem is { } item)
-            Publish(new Notification(guildId, NotificationKind.Started, destination.ChannelId, item,
+            Publish(new Notification(guildId, NotificationKind.Started, destination.ChannelId,
                 Position: playback.GetPosition(guildId, item.Id), Player: player));
     }
 
     public void Updated(GuildId guildId, PlayerSnapshot player)
     {
         if (player.CurrentQueueItem is { } item)
-            Publish(new Notification(guildId, NotificationKind.Updated, Item: item,
+            Publish(new Notification(guildId, NotificationKind.Updated,
                 Position: playback.GetPosition(guildId, item.Id), Player: player));
     }
 
@@ -123,7 +123,7 @@ internal sealed class MusicNotifications(
             if (position is null || position == message.Position)
                 continue;
             await DeliverSafelyAsync(new Notification(guildId, NotificationKind.Updated,
-                Item: message.Item, Position: position, Player: message.Player), ct);
+                Position: position, Player: message.Player), ct);
         }
     }
 
@@ -150,7 +150,7 @@ internal sealed class MusicNotifications(
                 break;
 
             case NotificationKind.Updated:
-                if (previous is null || previous.Item.Id != notification.Item!.Id)
+                if (previous is null || previous.Item.Id != notification.Player!.CurrentQueueItem!.Id)
                     return;
                 _lastPlaying[notification.GuildId] = previous with
                 {
@@ -160,7 +160,7 @@ internal sealed class MusicNotifications(
                 try
                 {
                     await messages.EditAsync(previous.ChannelId, previous.MessageId,
-                        CreatePlayingEmbed(PlayingTitle(notification.Player!), notification.Item!, notification.Position, notification.Player!),
+                        CreatePlayingEmbed(PlayingTitle(notification.Player!), notification.Player!, notification.Position),
                         CreateControls(notification.Player!), ct);
                 }
                 catch (global::Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.UnknownMessage)
@@ -186,7 +186,7 @@ internal sealed class MusicNotifications(
                 try
                 {
                     await messages.EditAsync(previous.ChannelId, previous.MessageId,
-                        CreatePlayingEmbed(notification.Kind == NotificationKind.Stopped ? "Playback stopped" : "Playback finished", previous.Item, finalPosition, previous.Player),
+                        CreatePlayingEmbed(notification.Kind == NotificationKind.Stopped ? "Playback stopped" : "Playback finished", previous.Player, finalPosition),
                         new ComponentBuilder().Build(), ct);
                 }
                 catch (global::Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.UnknownMessage)
@@ -208,9 +208,8 @@ internal sealed class MusicNotifications(
 
     private async Task SendPlayingAsync(Notification notification, ChannelId channelId, CancellationToken ct)
     {
-        var item = notification.Item!;
         var messageId = await messages.SendAsync(channelId,
-            embed: CreatePlayingEmbed(PlayingTitle(notification.Player!), item, notification.Position, notification.Player!),
+            embed: CreatePlayingEmbed(PlayingTitle(notification.Player!), notification.Player!, notification.Position),
             ct: ct, components: CreateControls(notification.Player!));
         _lastPlaying[notification.GuildId] = new SentMessage(channelId, messageId, notification.Player!, true, notification.Position);
     }
@@ -246,9 +245,9 @@ internal sealed class MusicNotifications(
             .AddField("Artist", TrackFormatting.Artists(item.Track), true)
             .AddField(item.IsAutoplay ? "Added by" : "Requested by", item.RequesterId is { } requester ? $"<@{requester.Value}>" : "Autoplay", true);
 
-    private static Embed CreatePlayingEmbed(string title, QueueItem item, TimeSpan? position, PlayerSnapshot player)
-        => CreateEmbed(title, item)
-            .AddField("Progress", TrackFormatting.ProgressBar(position, item.Track.Duration))
+    private static Embed CreatePlayingEmbed(string title, PlayerSnapshot player, TimeSpan? position)
+        => CreateEmbed(title, player.CurrentQueueItem!)
+            .AddField("Progress", TrackFormatting.ProgressBar(position, player.CurrentTrack!.Duration))
             .WithFooter($"Volume {player.Volume.Value}% \u00B7 {player.Queue.Count} {(player.Queue.Count == 1 ? "song" : "songs")} queued")
             .Build();
 

@@ -25,7 +25,7 @@ internal static class DependencyInjection
             .ValidateOnStart();
         services.AddScoped<EnqueueTracksUseCase>();
         services.AddScoped<SeekPlaybackUseCase>();
-        services.AddSingleton<TrackSelections>();
+        services.AddSingleton<SearchResults>();
         services.AddHostedService<VoicePresenceObserver>();
         services.AddSingleton<MusicNotifications>();
         services.AddSingleton<IHostedService>(sp => sp.GetRequiredService<MusicNotifications>());

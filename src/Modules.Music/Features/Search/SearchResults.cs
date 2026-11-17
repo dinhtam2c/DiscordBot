@@ -2,10 +2,10 @@ using Application.Abstractions;
 using Domain.ValueObjects;
 using Modules.Music.Tracks;
 
-namespace Modules.Music.Features;
+namespace Modules.Music.Features.Search;
 
 // Results belong to one user in one guild. Claiming consumes the menu atomically.
-internal sealed class TrackSelections(IClock clock)
+internal sealed class SearchResults(IClock clock)
 {
     private readonly object _sync = new();
     private readonly Dictionary<Guid, Result> _results = [];
