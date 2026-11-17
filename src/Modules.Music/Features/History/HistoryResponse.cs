@@ -8,7 +8,7 @@ internal static class HistoryResponse
     private const int PageSize = 10;
 
     public static MessageComponent Create(IReadOnlyList<PlaybackHistoryEntry> entries,
-        int page, int capacity)
+        int page)
     {
         var pages = Math.Max(1, (entries.Count + PageSize - 1) / PageSize);
         page = Math.Clamp(page, 0, pages - 1);
@@ -17,7 +17,7 @@ internal static class HistoryResponse
             : string.Join("\n\n", visible.Select((entry, index) =>
                 $"{page * PageSize + index + 1}. {TrackFormatting.CompactEntry(entry.Item.Track, 280)}\n{Details(entry)}"));
         var container = new ContainerBuilder().WithTextDisplay("### Playback history\n" + description)
-            .WithTextDisplay($"-# Newest first \u00B7 Page {page + 1} of {pages} \u00B7 {entries.Count}/{capacity} plays");
+            .WithTextDisplay($"-# Newest first \u00B7 Page {page + 1} of {pages} \u00B7 {entries.Count} plays");
         if (pages > 1)
             container.WithActionRow(new ActionRowBuilder()
                 .WithButton("Previous", $"music:history-page:{page - 1}", ButtonStyle.Secondary,

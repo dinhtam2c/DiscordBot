@@ -1,15 +1,13 @@
 using Application.Abstractions;
 using Application.Discord.Interactions;
 using Discord;
-using Microsoft.Extensions.Options;
-using Modules.Music.Players;
 using Discord.Interactions;
 using Modules.Music.Players.Coordination;
 
 namespace Modules.Music.Features.History;
 
 [CommandContextType(InteractionContextType.Guild)]
-internal sealed class HistoryCommands(PlayerCoordinator players, IOptions<PlaybackHistoryOptions> options, IAppLifetime lifetime) : DiscordCommands(lifetime)
+internal sealed class HistoryCommands(PlayerCoordinator players, IAppLifetime lifetime) : DiscordCommands(lifetime)
 {
     [SlashCommand("history", "See recent songs, who requested them, and who skipped them.")]
     [Ephemeral]
@@ -23,7 +21,7 @@ internal sealed class HistoryCommands(PlayerCoordinator players, IOptions<Playba
     private async Task ShowAsync(int page)
     {
         var entries = await players.GetHistoryAsync(GuildId, Ct);
-        var response = HistoryResponse.Create(entries, page, options.Value.Capacity);
+        var response = HistoryResponse.Create(entries, page);
         await CompleteAsync(components: response);
     }
 }
