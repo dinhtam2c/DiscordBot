@@ -16,7 +16,7 @@ internal sealed class QueueCommands(PlayerCoordinator players, IAppLifetime life
         var player = await players.GetSnapshotAsync(GuildId, Ct)
             ?? throw new UserFriendlyException("Use `/play` to start playing music first.");
         var response = QueueResponse.Create(player, 0);
-        await CompleteAsync(embed: response.Embed, components: response.Components);
+        await CompleteAsync(components: response);
     }
 
     [ComponentInteraction("music:queue-open")]
@@ -24,8 +24,7 @@ internal sealed class QueueCommands(PlayerCoordinator players, IAppLifetime life
     {
         var player = await players.GetSnapshotAsync(GuildId, Ct);
         var response = QueueResponse.Create(player, 0);
-        await FollowupAsync(embed: response.Embed, components: response.Components,
-            ephemeral: true, allowedMentions: AllowedMentions.None, options: new RequestOptions { CancelToken = Ct });
+        await FollowupV2Async(components: response, ephemeral: true);
     }
 
     [ComponentInteraction("music:queue:*")]
@@ -36,7 +35,7 @@ internal sealed class QueueCommands(PlayerCoordinator players, IAppLifetime life
 
         var player = await players.GetSnapshotAsync(GuildId, Ct);
         var response = QueueResponse.Create(player, index);
-        await CompleteAsync(embed: response.Embed, components: response.Components);
+        await CompleteAsync(components: response);
     }
 
     [SlashCommand("clear", "Clear the queue without stopping the current song.")]

@@ -30,17 +30,14 @@ internal sealed class DiscordMessageWorker(
                     switch (message)
                     {
                         case DiscordMessage.Send send:
-                            var sent = await channel.SendMessageAsync(send.Text, embed: send.Embed,
-                                allowedMentions: AllowedMentions.None, components: send.Components, options: options);
+                            var sent = await channel.SendMessageAsync(
+                                allowedMentions: AllowedMentions.None, components: send.Components, options: options,
+                                flags: MessageFlags.ComponentsV2);
                             message.Completion.TrySetResult(sent.Id);
                             break;
                         case DiscordMessage.Edit edit:
                             await channel.ModifyMessageAsync(edit.MessageId, properties =>
-                            {
-                                properties.Embeds = new[] { edit.Embed };
-                                properties.Components = edit.Components;
-                                properties.AllowedMentions = AllowedMentions.None;
-                            }, options);
+                                DiscordMessageContent.Apply(properties, components: edit.Components), options);
                             message.Completion.TrySetResult(edit.MessageId);
                             break;
                         case DiscordMessage.Delete delete:

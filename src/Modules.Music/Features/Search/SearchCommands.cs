@@ -38,7 +38,7 @@ internal sealed class SearchCommands(
         }
         var id = results.Add(GuildId, UserId, tracks);
         var response = SearchResponse.Create(tracks, id, provider);
-        await CompleteAsync(embed: response.Embed, components: response.Components);
+        await CompleteAsync(components: response);
     }
 
     [ComponentInteraction("music:search:*")]
@@ -50,6 +50,6 @@ internal sealed class SearchCommands(
         var track = results.Take(id, GuildId, UserId, index);
         var result = await enqueueTracks.ExecuteAsync(new EnqueueTracksInput(
             GuildId, UserId, new ChannelId(Context.Channel.Id), Context.Interaction.Id, EnqueueTracksMode.Queue), [track], Ct);
-        await CompleteAsync(embed: EnqueueTracksResponse.Create(result, EnqueueTracksMode.Queue));
+        await CompleteAsync(components: EnqueueTracksResponse.Create(result, EnqueueTracksMode.Queue));
     }
 }

@@ -2,6 +2,7 @@
 using System.Reflection;
 using Application.Abstractions;
 using Application.Discord.Interactions;
+using Application.Discord.Messages;
 using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -103,20 +104,18 @@ internal sealed class DiscordInteractionAdapter(
             if (interaction is SocketMessageComponent && interaction.HasResponded)
             {
                 // A deferred component points at the shared message. Errors belong to the clicking user.
-                await interaction.FollowupAsync(message, ephemeral: true, allowedMentions: AllowedMentions.None, options: options);
+                await interaction.FollowupAsync(components: DiscordMessageContent.Create(message), ephemeral: true,
+                    flags: MessageFlags.ComponentsV2, allowedMentions: AllowedMentions.None, options: options);
             }
             else if (interaction.HasResponded)
             {
                 await interaction.ModifyOriginalResponseAsync(response =>
-                {
-                    response.Content = message;
-                    response.Embeds = Array.Empty<Embed>();
-                    response.Components = new ComponentBuilder().Build();
-                }, options);
+                    DiscordMessageContent.Apply(response, text: message), options);
             }
             else
             {
-                await interaction.RespondAsync(message, ephemeral: true, options: options);
+                await interaction.RespondAsync(components: DiscordMessageContent.Create(message), ephemeral: true,
+                    flags: MessageFlags.ComponentsV2, allowedMentions: AllowedMentions.None, options: options);
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }

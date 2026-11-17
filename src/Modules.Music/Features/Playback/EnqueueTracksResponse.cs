@@ -5,48 +5,28 @@ namespace Modules.Music.Features.Playback;
 
 internal static class EnqueueTracksResponse
 {
-    public static Embed Create(EnqueueTracksResult result, EnqueueTracksMode mode)
+    public static MessageComponent Create(EnqueueTracksResult result, EnqueueTracksMode mode)
     {
         if (result.Playlist is null && result.Tracks.Count == 1)
         {
             var track = result.Tracks[0];
-            var position = result.StartsPlayback ? "Playing now"
-                : mode == EnqueueTracksMode.Next ? "#1" : $"#{result.QueueCount}";
-            var trackEmbed = new EmbedBuilder()
-                .WithTitle("Added to queue")
-                .WithDescription($"**{MessageFormatting.Link(track.Title, track.SourceUrl)}**")
-                .WithThumbnailUrl(track.ThumbnailUrl)
-                .AddField("Artist", TrackFormatting.Artists(track), true);
-            return trackEmbed
-                .AddField("Duration", TrackFormatting.Duration(track.Duration), true)
-                .AddField("Position", position, true)
-                .Build();
+            var position = result.StartsPlayback ? "Playing now" : mode == EnqueueTracksMode.Next ? "Queue #1" : $"Queue #{result.QueueCount}";
+            return MusicCard.Build(MusicCard.Create("Added to queue", track)
+                .WithTextDisplay($"-# {TrackFormatting.Duration(track.Duration)} \u00B7 {position}"));
         }
-
-        var totalDuration = result.Tracks.Aggregate(TimeSpan.Zero, (sum, track) => sum + track.Duration);
-        var description = $"Added **{result.Tracks.Count} {(result.Tracks.Count == 1 ? "song" : "songs")}** to the queue.";
-        var builder = new EmbedBuilder()
-            .WithTitle("Added to queue")
-            .WithDescription(description);
+        var count = result.Tracks.Count;
+        var description = $"Added **{count} {(count == 1 ? "song" : "songs")}** to the queue.";
         if (result.Playlist is { } playlist)
         {
             var playlistTitle = $"Playlist: **{MessageFormatting.Link(playlist.Title, playlist.SourceUrl)}**";
-            if (result.Tracks.Count <= 10)
-            {
-                description = playlistTitle + "\n\n" + string.Join('\n', result.Tracks.Select(
-                    (track, index) => $"{index + 1}. {TrackFormatting.Entry(track)}"));
-            }
-            else
-            {
-                description = $"{playlistTitle}\n{description}";
-            }
-            builder.WithDescription(description);
+            description = count <= 10
+                ? playlistTitle + "\n\n" + string.Join('\n', result.Tracks.Select((track, index) => $"{index + 1}. {TrackFormatting.CompactEntry(track, 280)}"))
+                : playlistTitle + "\n" + description;
             var creator = string.IsNullOrWhiteSpace(playlist.CreatorName) ? "Unknown" : playlist.CreatorName;
-            builder.AddField("Created by", string.IsNullOrWhiteSpace(playlist.CreatorUrl)
-                ? MessageFormatting.Text(creator) : MessageFormatting.Link(creator, playlist.CreatorUrl), true);
+            description += "\n\nCreated by: " + MessageFormatting.Link(creator, playlist.CreatorUrl);
         }
-        return builder
-            .AddField("Total duration", TrackFormatting.Duration(totalDuration), true)
-            .Build();
+        var duration = result.Tracks.Aggregate(TimeSpan.Zero, (sum, track) => sum + track.Duration);
+        return MusicCard.Build(new ContainerBuilder().WithTextDisplay("### Added to queue\n" + description)
+            .WithTextDisplay($"-# Total duration: {TrackFormatting.Duration(duration)}"));
     }
 }

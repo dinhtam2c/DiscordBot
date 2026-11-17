@@ -2,9 +2,8 @@ namespace Application.Discord.Messages;
 
 public static class MessageFormatting
 {
-    // Use for text values inside Markdown descriptions, fields, and message content.
+    // Use for external text values inside Markdown message content.
     // Preserve existing escapes so formatting a value again does not add backslashes.
-    // Embed titles and footers are plain text and should receive the raw value.
     public static string Text(string? value)
     {
         var escaped = new System.Text.StringBuilder();

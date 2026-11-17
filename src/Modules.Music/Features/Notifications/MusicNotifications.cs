@@ -7,6 +7,7 @@ using Domain.ValueObjects;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Modules.Music.Playback;
+using Modules.Music.Features.Playback;
 using Modules.Music.Players;
 
 namespace Modules.Music.Features.Notifications;
@@ -160,8 +161,7 @@ internal sealed class MusicNotifications(
                 try
                 {
                     await messages.EditAsync(previous.ChannelId, previous.MessageId,
-                        CreatePlayingEmbed(PlayingTitle(notification.Player!), notification.Player!, notification.Position),
-                        CreateControls(notification.Player!), ct);
+                        PlaybackMessage.Create(notification.Player!, notification.Position, controls: true), ct);
                 }
                 catch (global::Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.UnknownMessage)
                 {
@@ -186,8 +186,8 @@ internal sealed class MusicNotifications(
                 try
                 {
                     await messages.EditAsync(previous.ChannelId, previous.MessageId,
-                        CreatePlayingEmbed(notification.Kind == NotificationKind.Stopped ? "Playback stopped" : "Playback finished", previous.Player, finalPosition),
-                        new ComponentBuilder().Build(), ct);
+                        PlaybackMessage.Create(previous.Player, finalPosition,
+                            title: notification.Kind == NotificationKind.Stopped ? "Playback stopped" : "Playback finished"), ct);
                 }
                 catch (global::Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.UnknownMessage)
                 {
@@ -197,11 +197,11 @@ internal sealed class MusicNotifications(
 
             case NotificationKind.Failed:
                 var item = notification.Item!;
-                await messages.SendAsync(notification.ChannelId!.Value, embed: CreateEmbed("Song skipped", item)
-                    .WithDescription($"**{MessageFormatting.Link(item.Track.Title, item.Track.SourceUrl)}**\n"
-                        + (FindFriendlyError(notification.Error)?.Message ?? "This song couldn't be played."))
-                    .AddField("Duration", TrackFormatting.Duration(item.Track.Duration), true)
-                    .Build(), ct: ct);
+                var card = MusicCard.Create("Song skipped", item.Track,
+                        item.RequesterId is { } user ? $"Requested by: <@{user.Value}>" : "Added by: Autoplay")
+                    .WithTextDisplay(FindFriendlyError(notification.Error)?.Message ?? "This song couldn't be played.")
+                    .WithTextDisplay($"-# {TrackFormatting.Duration(item.Track.Duration)}");
+                await messages.SendAsync(notification.ChannelId!.Value, components: MusicCard.Build(card), ct: ct);
                 break;
         }
     }
@@ -209,47 +209,9 @@ internal sealed class MusicNotifications(
     private async Task SendPlayingAsync(Notification notification, ChannelId channelId, CancellationToken ct)
     {
         var messageId = await messages.SendAsync(channelId,
-            embed: CreatePlayingEmbed(PlayingTitle(notification.Player!), notification.Player!, notification.Position),
-            ct: ct, components: CreateControls(notification.Player!));
+            ct: ct, components: PlaybackMessage.Create(notification.Player!, notification.Position, controls: true));
         _lastPlaying[notification.GuildId] = new SentMessage(channelId, messageId, notification.Player!, true, notification.Position);
     }
-
-    private static string PlayingTitle(PlayerSnapshot player)
-        => !player.IsPaused ? "Now playing"
-            : player.IsPausedForEmptyChannel ? "Paused \u00B7 Voice channel is empty" : "Paused";
-
-    private static MessageComponent CreateControls(PlayerSnapshot player)
-    {
-        var id = player.CurrentQueueItem!.Id.ToString("N");
-        var repeat = player.LoopMode switch { LoopMode.Track => "Song", LoopMode.Queue => "Queue", _ => "Off" };
-        return new ComponentBuilder()
-            .WithButton(player.IsPaused ? "Resume" : "Pause", $"music:{(player.IsPaused ? "resume" : "pause")}:{id}",
-                player.IsPaused ? ButtonStyle.Primary : ButtonStyle.Secondary,
-                emote: new Emoji(player.IsPaused ? "\u25B6\uFE0F" : "\u23F8\uFE0F"), row: 0)
-            .WithButton("Skip", $"music:skip:{id}", ButtonStyle.Secondary, emote: new Emoji("\u23ED\uFE0F"), row: 0)
-            .WithButton("Queue", "music:queue-open", ButtonStyle.Secondary, emote: new Emoji("\uD83D\uDCCB"), row: 0)
-            .WithButton("Stop", $"music:stop:{id}", ButtonStyle.Danger, emote: new Emoji("\u23F9\uFE0F"), row: 0)
-            .WithButton($"Autoplay: {(player.AutoplayEnabled ? "On" : "Off")}", $"music:autoplay:{id}",
-                player.AutoplayEnabled ? ButtonStyle.Success : ButtonStyle.Secondary, emote: new Emoji("\u267E\uFE0F"), row: 1)
-            .WithButton($"Repeat: {repeat}", $"music:repeat:{id}",
-                player.LoopMode == LoopMode.None ? ButtonStyle.Secondary : ButtonStyle.Success,
-                emote: new Emoji("\uD83D\uDD01"), row: 1)
-            .Build();
-    }
-
-    private static EmbedBuilder CreateEmbed(string title, QueueItem item)
-        => new EmbedBuilder()
-            .WithTitle(title)
-            .WithDescription($"**{MessageFormatting.Link(item.Track.Title, item.Track.SourceUrl)}**")
-            .WithThumbnailUrl(item.Track.ThumbnailUrl)
-            .AddField("Artist", TrackFormatting.Artists(item.Track), true)
-            .AddField(item.IsAutoplay ? "Added by" : "Requested by", item.RequesterId is { } requester ? $"<@{requester.Value}>" : "Autoplay", true);
-
-    private static Embed CreatePlayingEmbed(string title, PlayerSnapshot player, TimeSpan? position)
-        => CreateEmbed(title, player.CurrentQueueItem!)
-            .AddField("Progress", TrackFormatting.ProgressBar(position, player.CurrentTrack!.Duration))
-            .WithFooter($"Volume {player.Volume.Value}% \u00B7 {player.Queue.Count} {(player.Queue.Count == 1 ? "song" : "songs")} queued")
-            .Build();
 
     private static UserFriendlyException? FindFriendlyError(Exception? error)
         => error switch

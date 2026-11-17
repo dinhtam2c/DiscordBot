@@ -24,6 +24,6 @@ internal sealed class HistoryCommands(PlayerCoordinator players, IOptions<Playba
     {
         var entries = await players.GetHistoryAsync(GuildId, Ct);
         var response = HistoryResponse.Create(entries, page, options.Value.Capacity);
-        await CompleteAsync(embed: response.Embed, components: response.Components);
+        await CompleteAsync(components: response);
     }
 }

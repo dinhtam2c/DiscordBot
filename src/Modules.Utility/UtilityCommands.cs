@@ -2,6 +2,7 @@
 using Application.Discord.Interactions;
 using Application.Discord.Messages;
 using Discord.Interactions;
+using Discord;
 
 namespace Modules.Utility;
 
@@ -15,7 +16,8 @@ internal sealed class UtilityCommands(
     {
         var lines = commands.SlashCommands.OrderBy(command => command.Name)
             .Select(command => $"- `/{command.Name}` — {MessageFormatting.Text(command.Description)}");
-        return CompleteAsync("**Available commands**\n" + string.Join('\n', lines));
+        return CompleteAsync(components: new ComponentBuilderV2().WithContainer(new ContainerBuilder()
+            .WithTextDisplay("### Available commands\n" + string.Join('\n', lines))).Build());
     }
 
     [SlashCommand("ping", "Check the bot's connection to Discord.")]

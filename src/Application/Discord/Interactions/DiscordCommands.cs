@@ -1,4 +1,5 @@
 using Application.Abstractions;
+using Application.Discord.Messages;
 using Discord;
 using Discord.Interactions;
 using Domain.ValueObjects;
@@ -16,12 +17,12 @@ public abstract class DiscordCommands(IAppLifetime lifetime) : InteractionModule
     protected UserId UserId => new(Context.User.Id);
 
     // Slash commands defer a reply; components defer an update to their source message.
-    protected Task CompleteAsync(string? text = null, Embed? embed = null, MessageComponent? components = null)
+    protected Task CompleteAsync(string? text = null, MessageComponent? components = null)
         => Context.Interaction.ModifyOriginalResponseAsync(message =>
-        {
-            message.Content = text ?? string.Empty;
-            message.Embeds = embed is null ? Array.Empty<Embed>() : [embed];
-            message.Components = components ?? new ComponentBuilder().Build();
-            message.AllowedMentions = AllowedMentions.None;
-        }, new RequestOptions { CancelToken = Ct });
+            DiscordMessageContent.Apply(message, text, components), new RequestOptions { CancelToken = Ct });
+
+    protected Task FollowupV2Async(string? text = null, MessageComponent? components = null, bool ephemeral = false)
+        => FollowupAsync(components: DiscordMessageContent.Create(text, components), ephemeral: ephemeral,
+            flags: MessageFlags.ComponentsV2, allowedMentions: AllowedMentions.None,
+            options: new RequestOptions { CancelToken = Ct });
 }

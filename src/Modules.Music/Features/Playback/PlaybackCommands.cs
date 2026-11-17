@@ -1,5 +1,4 @@
 ﻿using Application.Discord.Messages;
-using System.Globalization;
 using Application.Abstractions;
 using Application.Discord.Interactions;
 using Discord;
@@ -29,7 +28,7 @@ internal sealed class PlaybackCommands(
     {
         var result = await enqueueTracks.ExecuteAsync(new EnqueueTracksInput(
             GuildId, UserId, new ChannelId(Context.Channel.Id), Context.Interaction.Id, mode), query, Ct);
-        await CompleteAsync(embed: EnqueueTracksResponse.Create(result, mode));
+        await CompleteAsync(components: EnqueueTracksResponse.Create(result, mode));
     }
 
     [SlashCommand("pause", "Pause the music.")]
@@ -88,8 +87,7 @@ internal sealed class PlaybackCommands(
     public async Task SkipButtonAsync(string itemId)
     {
         var result = await ControlAsync(itemId, new SkipTrack(UserId));
-        await FollowupAsync(SkipResponse(result), ephemeral: false, allowedMentions: AllowedMentions.None,
-            options: new RequestOptions { CancelToken = Ct });
+        await FollowupV2Async(SkipResponse(result));
     }
 
     [ComponentInteraction("music:autoplay:*")]
@@ -141,23 +139,12 @@ internal sealed class PlaybackCommands(
     {
         var player = await players.GetSnapshotAsync(GuildId, Ct)
             ?? throw new UserFriendlyException("Use `/play` to start playing music first.");
-        if (player.CurrentQueueItem is not { } item)
+        if (player.CurrentQueueItem is null)
         {
             await CompleteAsync("Nothing is playing right now.");
             return;
         }
 
-        var requester = item.RequesterId is { } requesterId ? Context.Guild.GetUser(requesterId.Value) : null;
-        var requesterName = item.IsAutoplay ? "Autoplay" : requester?.DisplayName ?? $"User {item.RequesterId}";
-        var track = item.Track;
-        await CompleteAsync(embed: new EmbedBuilder()
-            .WithTitle(player.IsPaused ? "Paused" : "Now playing")
-            .WithDescription($"**{MessageFormatting.Link(track.Title, track.SourceUrl)}**")
-            .WithThumbnailUrl(track.ThumbnailUrl)
-            .AddField("Artist", TrackFormatting.Artists(track), true)
-            .AddField(item.IsAutoplay ? "Added by" : "Requested by", MessageFormatting.Text(requesterName), true)
-            .AddField(item.IsAutoplay ? "Added at" : "Requested at", item.RequestedAt.ToLocalTime().ToString("hh:mm tt", CultureInfo.InvariantCulture), true)
-            .AddField("Progress", TrackFormatting.ProgressBar(player.PlaybackPosition, track.Duration))
-            .Build());
+        await CompleteAsync(components: PlaybackMessage.Create(player, player.PlaybackPosition, requestedAt: true));
     }
 }

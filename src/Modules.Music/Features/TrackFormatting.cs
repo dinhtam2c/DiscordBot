@@ -41,10 +41,10 @@ internal static class TrackFormatting
         if (position is null)
             return Progress(null, duration);
 
-        const int width = 16;
+        const int width = 48;
         var ratio = Math.Clamp(position.Value.Ticks / (double)duration.Ticks, 0, 1);
         var marker = (int)(ratio * (width - 1));
-        return $"{new string('\u2501', marker)}\u25CF{new string('\u2500', width - marker - 1)}\n{Progress(position, duration)}";
+        return $"{new string('\u2501', marker)}\u25CF{new string('\u2500', width - marker - 1)}  {Progress(position, duration)}";
     }
 
     public static string Entry(Track track)
@@ -56,7 +56,7 @@ internal static class TrackFormatting
         if (entry.Length <= maxLength)
             return entry;
 
-        // Keep ten entries inside Discord's description limit even with long source metadata.
+        // Keep paginated lists inside Discord's message text limit even with long source metadata.
         var compact = track with
         {
             Title = Shorten(track.Title, 80),

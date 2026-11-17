@@ -1,4 +1,5 @@
 ﻿using Application.Abstractions;
+using Application.Discord.Messages;
 using Discord;
 using Discord.Interactions;
 using Domain.ValueObjects;
@@ -35,7 +36,7 @@ internal static class ShortcutCommands
                         new EnqueueTracksInput(new GuildId(guild.Id), new UserId(context.User.Id),
                             new ChannelId(context.Channel.Id), context.Interaction.Id, shortcut.Mode), shortcut.Query, ct);
                     await context.Interaction.ModifyOriginalResponseAsync(
-                        message => message.Embeds = new[] { EnqueueTracksResponse.Create(result, shortcut.Mode) },
+                        message => DiscordMessageContent.Apply(message, components: EnqueueTracksResponse.Create(result, shortcut.Mode)),
                         new RequestOptions { CancelToken = ct });
                 }, command => command.WithDescription(shortcut.Description));
             }
