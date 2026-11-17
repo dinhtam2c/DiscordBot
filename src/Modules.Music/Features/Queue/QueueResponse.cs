@@ -18,7 +18,7 @@ internal static class QueueResponse
         var description = new StringBuilder();
         if (player?.CurrentTrack is { } current)
         {
-            description.AppendLine($"**{(player.IsPaused ? "Paused" : "Now playing")}:** {Entry(current)}");
+            description.AppendLine($"**{(player.IsPaused ? "Paused" : "Now playing")}:** {TrackFormatting.CompactEntry(current)}");
             description.AppendLine();
         }
         if (count > 0)
@@ -26,7 +26,7 @@ internal static class QueueResponse
             description.AppendLine("**Up next:**");
             var end = Math.Min((long)(page + 1) * PageSize, count);
             for (var index = page * PageSize; index < end; index++)
-                description.AppendLine($"{index + 1}. {Entry(player!.Queue[index].Track)}");
+                description.AppendLine($"{index + 1}. {TrackFormatting.CompactEntry(player!.Queue[index].Track)}");
         }
         else
         {
@@ -50,26 +50,4 @@ internal static class QueueResponse
             .Build(), components.Build());
     }
 
-    private static string Entry(Track track)
-    {
-        var entry = TrackFormatting.Entry(track);
-        if (entry.Length <= 340)
-            return entry;
-
-        // Keep ten entries inside Discord's description limit even with long source metadata.
-        var compact = track with
-        {
-            Title = Shorten(track.Title, 80),
-        };
-        entry = TrackFormatting.Entry(compact);
-        if (entry.Length <= 340)
-            return entry;
-
-        var artist = Shorten(track.Artists.Count > 0
-            ? string.Join(", ", track.Artists) : track.UploaderName ?? "Unknown", 40);
-        return $"**{MessageFormatting.Text(compact.Title)}** • {MessageFormatting.Text(artist)} • `{TrackFormatting.Duration(compact.Duration)}`";
-    }
-
-    private static string Shorten(string text, int length)
-        => text.Length <= length ? text : text[..length] + "…";
 }

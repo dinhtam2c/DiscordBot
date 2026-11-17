@@ -5,6 +5,7 @@ using Domain.ValueObjects;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Modules.Music.Playback;
 using Modules.Music.Features.Notifications;
 using Modules.Music.Tracks.Youtube;
@@ -19,6 +20,8 @@ internal sealed partial class PlayerCoordinator(
     IVoiceChannelPresence presence,
     MusicNotifications notifications,
     IAppLifetime lifetime,
+    IClock clock,
+    IOptions<PlaybackHistoryOptions> historyOptions,
     ILogger<PlayerCoordinator> logger) : IHostedService, IAsyncDisposable
 {
     private readonly object _sync = new();
@@ -59,6 +62,12 @@ internal sealed partial class PlayerCoordinator(
             mailbox.Autoplay.Cancel();
             return Task.FromResult(mailbox.EnqueueRevision);
         }, _shutdown.Token);
+    }
+
+    public Task<IReadOnlyList<PlaybackHistoryEntry>> GetHistoryAsync(GuildId guildId, CancellationToken ct)
+    {
+        var mailbox = GetMailbox(guildId);
+        return mailbox.SendAsync(_ => Task.FromResult(mailbox.History.Snapshot()), ct);
     }
 
     public Task<SeekPreparation> BeginSeekAsync(GuildId guildId, TimeSpan position, CancellationToken ct)
@@ -103,7 +112,7 @@ internal sealed partial class PlayerCoordinator(
             {
                 mailbox = new PlayerMailbox(
                     () => playback.ApplyAsync(guildId, PlaybackTarget.From(null), _ => { }, _ => { }, CancellationToken.None),
-                    _shutdown.Token, logger);
+                    _shutdown.Token, logger, historyOptions.Value.Capacity);
                 _mailboxes.Add(guildId, mailbox);
                 mailbox.Start();
             }
@@ -136,12 +145,16 @@ internal sealed partial class PlayerCoordinator(
             SeekPlayback.ValidatePosition(seek.Position, item.Track.Duration);
             if (SynchronizePresence(player))
                 await unitOfWork.SaveChangesAsync(ct);
+            var oldSessionId = playback.GetSessionId(guildId, item.Id);
             await playback.SeekAsync(guildId, PlaybackTarget.From(player), seek.Position, seek.Source, PostPlaybackEnded, ct);
+            if (oldSessionId is { } oldId && playback.GetSessionId(guildId, item.Id) is { } newId)
+                mailbox.History.Rebind(oldId, newId);
             notifications.Updated(guildId, PlayerSnapshot.From(player!));
             return new PlayerResult(item, player.IsPaused, player.QueueCount, false);
         }
 
         var previousItem = player?.CurrentQueueItem;
+        var previousSessionId = previousItem is { } previous ? playback.GetSessionId(guildId, previous.Id) : null;
         var wasPaused = player?.IsPaused ?? false;
         var wasManuallyPaused = player?.IsManuallyPaused ?? false;
         var previousChannel = player?.VoiceChannelId;
@@ -181,7 +194,6 @@ internal sealed partial class PlayerCoordinator(
                     player.Join(channelId);
                 }
 
-                var clock = services.GetRequiredService<IClock>();
                 var items = enqueue.Tracks.Select(track => new QueueItem(track, enqueue.RequesterId, clock.UtcNow)).ToArray();
                 player.Enqueue(items, enqueue.PlayNext);
                 break;
@@ -285,6 +297,11 @@ internal sealed partial class PlayerCoordinator(
         if (changed)
             await unitOfWork.SaveChangesAsync(ct);
 
+        if (previousItem is not null && previousSessionId is { } sessionId
+            && request is SkipTrack or StopPlayback or LeaveVoice)
+            mailbox.History.Finish(sessionId, previousItem,
+                request is SkipTrack ? PlaybackHistoryStatus.Skipped : PlaybackHistoryStatus.Stopped, clock.UtcNow);
+
         // Persist first. The mailbox holds the next request until runtime has accepted this target.
         var endedPosition = previousItem is not null && player?.CurrentQueueItem is null
             ? playback.GetPosition(guildId, previousItem.Id)
@@ -316,6 +333,8 @@ internal sealed partial class PlayerCoordinator(
                 await voice.RequestJoinAsync(guildId, channel, ct);
 
             await playback.ApplyAsync(guildId, PlaybackTarget.From(player), PostPlaybackStarted, PostPlaybackEnded, ct);
+            if (player.CurrentQueueItem is { } item && playback.GetSessionId(guildId, item.Id) is { } sessionId)
+                GetMailbox(guildId).History.Start(sessionId, item, clock.UtcNow);
         }
         else
         {
@@ -384,6 +403,9 @@ internal sealed partial class PlayerCoordinator(
                         player.FinishCurrentTrack();
                     SynchronizePresence(player);
                     await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
+                    GetMailbox(ended.GuildId).History.Finish(ended.SessionId, item,
+                        ended.Reason == PlaybackEndReason.Failed ? PlaybackHistoryStatus.Failed : PlaybackHistoryStatus.Completed,
+                        clock.UtcNow);
                 }
                 pending.Saved = true;
                 var autoplay = GetMailbox(ended.GuildId).Autoplay;
@@ -403,8 +425,7 @@ internal sealed partial class PlayerCoordinator(
             if (SynchronizePresence(player))
                 await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);
             await playback.CompleteAsync(ended.GuildId, ended.SessionId);
-            await voice.RequestStatusAsync(ended.GuildId, player?.CurrentQueueItem?.Track.Title, ct);
-            await playback.ApplyAsync(ended.GuildId, PlaybackTarget.From(player), PostPlaybackStarted, PostPlaybackEnded, ct);
+            await ApplyAsync(ended.GuildId, player, player?.VoiceChannelId, false, false, ct);
             SynchronizeAutoplay(ended.GuildId, GetMailbox(ended.GuildId), player);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }

@@ -1,6 +1,5 @@
 using Modules.Music.Players;
 using Modules.Music.Tracks;
-using Modules.Music.Tracks.Youtube;
 
 namespace Modules.Music.Features.Autoplay;
 
@@ -15,7 +14,6 @@ internal sealed class AutoplaySession
     public int LoadedLimit { get; set; }
     public int PendingEnqueues { get; set; }
     public Queue<Track> Candidates { get; } = new();
-    public List<Track> History { get; } = [];
     public Track? Ready { get; set; }
     public CancellationTokenSource? Work { get; private set; }
     public long Revision { get; private set; }
@@ -31,7 +29,6 @@ internal sealed class AutoplaySession
     {
         if (item is null || item.Id == LastItemId) return;
         LastItemId = item.Id;
-        Remember(item.Track);
         if (!item.IsAutoplay)
         {
             Cancel();
@@ -53,14 +50,6 @@ internal sealed class AutoplaySession
         LoadedLimit = 0;
         Failures = 0;
     }
-
-    public void Remember(Track track)
-    {
-        History.Add(track);
-        if (History.Count > 50) History.RemoveAt(0);
-    }
-
-    public bool Excludes(Track track) => History.Any(previous => YoutubeRecommendations.SameSong(previous, track));
 
     public (long Revision, CancellationTokenSource Work) Begin(CancellationToken stopping)
     {

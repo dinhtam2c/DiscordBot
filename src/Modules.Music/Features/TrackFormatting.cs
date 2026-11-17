@@ -49,4 +49,27 @@ internal static class TrackFormatting
 
     public static string Entry(Track track)
         => $"**{MessageFormatting.Link(track.Title, track.SourceUrl)}** • {Artists(track)} • `{Duration(track.Duration)}`";
+
+    public static string CompactEntry(Track track)
+    {
+        var entry = Entry(track);
+        if (entry.Length <= 340)
+            return entry;
+
+        // Keep ten entries inside Discord's description limit even with long source metadata.
+        var compact = track with
+        {
+            Title = Shorten(track.Title, 80),
+        };
+        entry = Entry(compact);
+        if (entry.Length <= 340)
+            return entry;
+
+        var artist = Shorten(track.Artists.Count > 0
+            ? string.Join(", ", track.Artists) : track.UploaderName ?? "Unknown", 40);
+        return $"**{MessageFormatting.Text(compact.Title)}** • {MessageFormatting.Text(artist)} • `{Duration(compact.Duration)}`";
+    }
+
+    private static string Shorten(string text, int length)
+        => text.Length <= length ? text : text[..length] + "…";
 }

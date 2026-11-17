@@ -49,7 +49,7 @@ internal sealed partial class PlayerCoordinator
             StopAutoplay(guildId, mailbox);
             return;
         }
-        if (state.Ready is { } ready && state.Excludes(ready)) state.Ready = null;
+        if (state.Ready is { } ready && IsExcluded(mailbox, ready)) state.Ready = null;
         if (state.Ready is not null)
         {
             if (!player.HasCurrentTrack)
@@ -66,7 +66,7 @@ internal sealed partial class PlayerCoordinator
             return;
         }
         var seed = state.Seed;
-        var history = state.History.ToArray();
+        var history = mailbox.History.RecentTracks(historyOptions.Value.AutoplayWindow);
         var candidates = state.Candidates.ToArray();
         var limit = state.LoadedLimit == 0 ? 25 : 75;
         var (revision, work) = state.Begin(_shutdown.Token);
@@ -145,7 +145,7 @@ internal sealed partial class PlayerCoordinator
             || player.HasCurrentTrack || player.HasQueue || player.VoiceChannelId is not { } channel
             || presence.HasListeners(guildId, channel) != true)
             return;
-        if (state.Ready is not { } track || state.Excludes(track))
+        if (state.Ready is not { } track || IsExcluded(mailbox, track))
         {
             state.Ready = null;
             SynchronizeAutoplay(guildId, mailbox, player);
@@ -159,6 +159,9 @@ internal sealed partial class PlayerCoordinator
         await ApplyAsync(guildId, player, channel, false, false, ct);
         SynchronizeAutoplay(guildId, mailbox, player);
     }
+
+    private bool IsExcluded(PlayerMailbox mailbox, Track track)
+        => mailbox.History.RecentTracks(historyOptions.Value.AutoplayWindow).Any(previous => YoutubeRecommendations.SameSong(previous, track));
 
     private void StopAutoplay(GuildId guildId, PlayerMailbox mailbox)
     {

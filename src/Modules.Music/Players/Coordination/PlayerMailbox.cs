@@ -7,7 +7,8 @@ namespace Modules.Music.Players.Coordination;
 internal sealed class PlayerMailbox(
     Func<Task> cleanup,
     CancellationToken stoppingToken,
-    ILogger logger)
+    ILogger logger,
+    int historyCapacity)
 {
     private readonly Channel<IWorkItem> _channel = Channel.CreateUnbounded<IWorkItem>(
         new UnboundedChannelOptions { SingleReader = true, AllowSynchronousContinuations = false });
@@ -15,6 +16,8 @@ internal sealed class PlayerMailbox(
     public Task Completion { get; private set; } = Task.CompletedTask;
 
     // Accessed only by work items running on this mailbox.
+    public PlaybackHistory History { get; } = new(historyCapacity);
+
     public AutoplaySession Autoplay { get; } = new();
 
     public long EnqueueRevision { get; set; }
