@@ -41,7 +41,7 @@ internal static class TrackFormatting
         if (position is null)
             return Progress(null, duration);
 
-        const int width = 48;
+        const int width = 30;
         var ratio = Math.Clamp(position.Value.Ticks / (double)duration.Ticks, 0, 1);
         var marker = (int)(ratio * (width - 1));
         return $"{new string('\u2501', marker)}\u25CF{new string('\u2500', width - marker - 1)}  {Progress(position, duration)}";
