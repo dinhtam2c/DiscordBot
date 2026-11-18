@@ -1,127 +1,118 @@
-using System.Text.RegularExpressions;
-using Modules.Music.Processes.YtDlp;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
+using Modules.Music.Features.Autoplay;
+using Modules.Music.Processes.YtDlp;
 
 namespace Modules.Music.Tracks.Youtube;
 
 internal interface IYoutubeRecommendations
 {
-    Task<IReadOnlyList<Track>> GetAsync(Track seed, int limit, CancellationToken ct);
+    Task<IReadOnlyList<AutoplayCandidate>> GetAsync(Track seed, int limit, CancellationToken ct);
     Task<Track?> ResolveAsync(Track candidate, CancellationToken ct);
-    Task<IReadOnlyList<Track>> ExploreAsync(Track seed, int attempt, CancellationToken ct);
+    Task<IReadOnlyList<AutoplayCandidate>> ExploreAsync(Track anchor, int attempt, CancellationToken ct);
 }
 
-internal sealed class YoutubeRecommendations(YtDlpClient ytdlp) : IYoutubeRecommendations
+internal sealed class YoutubeRecommendations(YtDlpClient ytdlp, ILogger<YoutubeRecommendations> logger) : IYoutubeRecommendations
 {
-    public async Task<IReadOnlyList<Track>> GetAsync(Track seed, int limit, CancellationToken ct)
+    public async Task<IReadOnlyList<AutoplayCandidate>> GetAsync(Track seed, int limit, CancellationToken ct)
     {
-        for (var attempt = 0; ; attempt++)
+        var anchor = seed.Source == TrackSource.Youtube ? seed : await FindYoutubeRecordingAsync(seed, ct);
+        if (anchor is not null)
         {
-            try { return await GetCoreAsync(seed, limit, ct); }
-            catch (Exception ex) when (attempt < 2 && Modules.Music.Processes.AudioProcessException.IsTransientFailure(ex)
-                && !ct.IsCancellationRequested)
-            { await Task.Delay(TimeSpan.FromSeconds(attempt + 1), ct); }
+            var mix = await TryMixAsync(anchor, limit, ct);
+            if (mix.Length > 0) return mix;
+        }
+
+        anchor ??= seed;
+        var related = await SearchAsync(anchor.Title, limit, ct);
+        var series = Collect(related, anchor, AutoplaySource.Series, track => AutoplaySelection.SameSeries(anchor, track));
+        return series.Length > 0 || limit < 75 ? series : Collect(related, anchor, AutoplaySource.Search);
+    }
+
+    private async Task<Track?> FindYoutubeRecordingAsync(Track seed, CancellationToken ct)
+    {
+        var query = string.Join(" ", seed.CreditedArtists.Append(seed.SongTitle ?? seed.Title));
+        try
+        {
+            var matches = await SearchAsync(query, 5, ct);
+            return matches.FirstOrDefault(track => AutoplaySelection.MatchesRecording(seed, track));
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogDebug(ex, "Could not find a YouTube recording for '{TrackId}'. Trying a broader search.", seed.Id);
+            return null;
         }
     }
 
-    private async Task<IReadOnlyList<Track>> GetCoreAsync(Track seed, int limit, CancellationToken ct)
+    private async Task<AutoplayCandidate[]> TryMixAsync(Track anchor, int limit, CancellationToken ct)
     {
-        var anchor = seed;
-        if (seed.Source != TrackSource.Youtube)
+        var id = Uri.EscapeDataString(anchor.Id);
+        try
         {
-            var query = string.Join(" ", seed.Artists) + " " + seed.Title;
-            var search = await ytdlp.RunAsync(["--dump-single-json", "--flat-playlist", "--no-warnings", $"ytsearch5:{query}"], ct);
-            var matches = ParseCandidates(search).ToArray();
-            anchor = matches
-                .Where(track => SimilarTitle(seed, track) >= .65 && DurationMatches(seed, track, 15))
-                .OrderByDescending(track => SimilarTitle(seed, track)).FirstOrDefault()
-                ?? matches.Where(track => Suitable(seed, track)).OrderByDescending(track => SimilarTitle(seed, track)).FirstOrDefault()!;
-            if (anchor is null) return [];
+            var tracks = await ReadEntriesAsync($"https://www.youtube.com/watch?v={id}&list=RD{id}", limit, ct);
+            return Collect(tracks, anchor, AutoplaySource.Mix);
         }
-        var url = $"https://www.youtube.com/watch?v={Uri.EscapeDataString(anchor.Id)}&list=RD{Uri.EscapeDataString(anchor.Id)}";
-        var json = await ytdlp.RunAsync(["--dump-single-json", "--flat-playlist", "--playlist-end", limit.ToString(), "--no-warnings", "--", url], ct);
-        var mix = JsonSerializer.Deserialize<YoutubeMetadata>(json);
-        if (mix?.Entries is { Count: > 0 })
-            return ParseCandidates(json)
-                .Where(track => !SameSong(anchor, track) && Suitable(seed, track)).ToArray();
-
-        // Some radio URLs silently resolve to the seed video, with no playlist entries.
-        // Only fall back to closely named videos from the same uploader (for example a numbered series).
-        var related = await ytdlp.RunAsync(
-            ["--dump-single-json", "--flat-playlist", "--no-warnings", $"ytsearch{limit}:{anchor.Title}"], ct);
-        var candidates = ParseCandidates(related)
-            .Where(track => !SameSong(anchor, track) && SameUploader(anchor, track)
-                && SimilarTitle(anchor, track) >= .6 && Suitable(seed, track))
-            .ToArray();
-        // At the wider tier, continuity takes priority over uploader/title restrictions.
-        return candidates.Length > 0 || limit < 75 ? candidates
-            : ParseCandidates(related).Where(track => Suitable(seed, track)).ToArray();
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            logger.LogDebug(ex, "YouTube Mix for '{VideoId}' failed. Trying another source.", anchor.Id);
+            return [];
+        }
     }
 
-    public async Task<IReadOnlyList<Track>> ExploreAsync(Track seed, int attempt, CancellationToken ct)
+    public async Task<IReadOnlyList<AutoplayCandidate>> ExploreAsync(Track anchor, int attempt, CancellationToken ct)
     {
-        // Widen queries and rotate discovery anchors; never return a history item as a playback fallback.
-        var title = Regex.Replace(seed.Title, @"[_|]+", " ");
+        var phase = attempt % 4;
+        if (phase == 0 && anchor.Source == TrackSource.Youtube)
+        {
+            var mix = await TryMixAsync(anchor, 25, ct);
+            if (mix.Length > 0) return mix;
+        }
+
+        var title = Regex.Replace(anchor.SongTitle ?? anchor.Title, @"[_|]+", " ");
         title = Regex.Replace(title, @"\b(vol(?:ume)?|part|episode)\s*\d+\b", "", RegexOptions.IgnoreCase).Trim();
-        var artists = string.Join(" ", seed.Artists);
-        var queries = new[] { title, artists + " music", string.Join(" ", title.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(3)) + " music" }
-            .Where(query => !string.IsNullOrWhiteSpace(query)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        var count = Math.Min(200, 25 + (long)attempt * 25);
-        var json = await ytdlp.RunAsync(["--dump-single-json", "--flat-playlist", "--no-warnings",
-            $"ytsearch{count}:{queries[attempt % queries.Length]}"], ct);
-        return ParseCandidates(json).Where(track => !SameSong(seed, track) && Suitable(seed, track)).ToArray();
+        if (title.Length == 0) title = anchor.Title;
+        var artists = string.Join(" ", anchor.CreditedArtists);
+        var subject = string.Join(" ", title.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(3));
+        var query = phase switch
+        {
+            0 => title,
+            1 when artists.Length > 0 => artists + " music",
+            1 => subject + " music",
+            2 => title + " music",
+            _ => subject + " mix",
+        };
+        var count = Math.Min(200, 25 + attempt / 4 * 25);
+        return Collect(await SearchAsync(query, count, ct), anchor, AutoplaySource.Search);
     }
 
     public async Task<Track?> ResolveAsync(Track candidate, CancellationToken ct)
     {
         var json = await ytdlp.RunAsync(["--dump-single-json", "--no-playlist", "--no-warnings", "--", candidate.SourceUrl], ct);
-        var metadata = JsonSerializer.Deserialize<YoutubeMetadata>(json);
-        return metadata is null || metadata.IsLive == true || metadata.Availability == "private"
-            ? null : YoutubeTrackResolver.ParseTrack(metadata);
+        return JsonSerializer.Deserialize<YoutubeMetadata>(json) is { } metadata && IsCandidate(metadata)
+            ? YoutubeTrackResolver.ParseTrack(metadata) : null;
     }
 
-    private static IEnumerable<Track> ParseCandidates(string json)
-        => (JsonSerializer.Deserialize<YoutubeMetadata>(json)?.Entries ?? [])
-            .Where(metadata => !string.IsNullOrWhiteSpace(metadata.Id) && !string.IsNullOrWhiteSpace(metadata.Title) && metadata.IsLive != true && metadata.Availability != "private")
-            .Select(YoutubeTrackResolver.ParseTrack);
+    private Task<Track[]> SearchAsync(string query, int limit, CancellationToken ct)
+        => ReadEntriesAsync($"ytsearch{limit}:{query}", limit, ct);
 
-    public static bool Suitable(Track seed, Track track)
+    private async Task<Track[]> ReadEntriesAsync(string input, int limit, CancellationToken ct)
     {
-        if (track.Duration <= TimeSpan.Zero) return false;
-        var title = track.Title.ToLowerInvariant();
-        foreach (var version in new[] { "cover", "acoustic", "sped up", "slowed", "nightcore", "karaoke" })
-        {
-            var pattern = @"\b" + Regex.Escape(version) + @"\b";
-            if (Regex.IsMatch(title, pattern) && !Regex.IsMatch(seed.Title, pattern, RegexOptions.IgnoreCase)) return false;
-        }
-        return seed.Duration.TotalMinutes >= 15 || (track.Duration.TotalMinutes < 15
-            && !Regex.IsMatch(title, @"\b(compilation|playlist|nonstop|1 hour|10 hours)\b"));
+        var json = await ytdlp.RunAsync(
+            ["--dump-single-json", "--flat-playlist", "--playlist-end", limit.ToString(), "--no-warnings", "--", input], ct);
+        return (JsonSerializer.Deserialize<YoutubeMetadata>(json)?.Entries ?? [])
+            .Where(IsCandidate).Select(YoutubeTrackResolver.ParseTrack).ToArray();
     }
 
-    public static bool SameSong(Track left, Track right)
-        => left.Source == right.Source && left.Id == right.Id
-            || DurationMatches(left, right, 10) && SimilarTitle(left, right) >= .85;
+    private static bool IsCandidate(YoutubeMetadata? metadata)
+        => metadata is not null && !string.IsNullOrWhiteSpace(metadata.Id) && !string.IsNullOrWhiteSpace(metadata.Title)
+            && metadata.IsLive != true && metadata.LiveStatus is not ("is_live" or "is_upcoming")
+            && metadata.Availability is not ("private" or "premium_only" or "subscriber_only" or "needs_auth");
 
-    private static bool DurationMatches(Track left, Track right, int tolerance)
-        => left.Duration > TimeSpan.Zero && right.Duration > TimeSpan.Zero
-            && Math.Abs((left.Duration - right.Duration).TotalSeconds) <= tolerance;
-
-    private static bool SameUploader(Track left, Track right)
-        => !string.IsNullOrWhiteSpace(left.UploaderUrl) && !string.IsNullOrWhiteSpace(right.UploaderUrl)
-            && string.Equals(left.UploaderUrl.TrimEnd('/'), right.UploaderUrl.TrimEnd('/'), StringComparison.Ordinal);
-
-    private static double SimilarTitle(Track left, Track right)
-    {
-        var a = Words(left); var b = Words(right);
-        return a.Count == 0 || b.Count == 0 ? 0 : (double)a.Intersect(b).Count() / a.Union(b).Count();
-    }
-
-    private static HashSet<string> Words(Track track)
-    {
-        var title = track.Title.ToLowerInvariant();
-        foreach (var artist in track.Artists.OrderByDescending(artist => artist.Length))
-            if (title.StartsWith(artist.ToLowerInvariant() + " - ")) title = title[(artist.Length + 3)..];
-        title = Regex.Replace(title, @"\b(official|music|video|audio|lyrics?|visualizer|mv|hd|4k)\b", " ");
-        return Regex.Matches(title, @"[\p{L}\p{N}]+").Select(match => match.Value).ToHashSet();
-    }
+    private static AutoplayCandidate[] Collect(Track[] tracks, Track anchor, AutoplaySource source, Func<Track, bool>? matches = null)
+        => tracks.Select((track, rank) => new AutoplayCandidate(track, source, rank))
+            .Where(candidate => !AutoplaySelection.SameSong(anchor, candidate.Track)
+                && AutoplaySelection.Suitable(anchor, candidate.Track, allowUnknownDuration: true)
+                && (matches is null || matches(candidate.Track)))
+            .ToArray();
 }

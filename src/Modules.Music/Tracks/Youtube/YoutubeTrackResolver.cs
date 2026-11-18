@@ -106,6 +106,10 @@ internal sealed class YoutubeTrackResolver(
             SourceUrl: dto.WebpageUrl ?? $"https://www.youtube.com/watch?v={dto.Id}",
             ThumbnailUrl: thumbnailUrl,
             UploaderName: dto.Channel ?? dto.Uploader,
-            UploaderUrl: dto.ChannelUrl ?? dto.UploaderUrl);
+            UploaderUrl: dto.ChannelUrl ?? dto.UploaderUrl)
+        {
+            SongTitle = dto.SongTitle,
+            CreditedArtists = Track.SelectArtists(dto.Artists, [dto.Artist], dto.Creators, [dto.Creator]),
+        };
     }
 }

@@ -18,7 +18,7 @@ internal sealed class PlaybackHistory(int capacity)
     private readonly List<PlaybackHistoryEntry> _entries = [];
 
     public IReadOnlyList<PlaybackHistoryEntry> Snapshot() => Array.AsReadOnly(_entries.AsEnumerable().Reverse().ToArray());
-    public Track[] RecentTracks(int count) => _entries.TakeLast(count).Select(entry => entry.Item.Track).ToArray();
+    public PlaybackHistoryEntry[] RecentEntries(int count) => _entries.TakeLast(count).ToArray();
 
     public void Start(Guid sessionId, QueueItem item, DateTimeOffset now)
     {

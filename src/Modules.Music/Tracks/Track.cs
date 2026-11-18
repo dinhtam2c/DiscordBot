@@ -13,6 +13,8 @@ internal sealed record Track(
     string? UploaderUrl = null)
 {
     public string Title { get; init; } = string.IsNullOrWhiteSpace(Title) ? "Unknown song" : Title;
+    public string? SongTitle { get; init; }
+    public IReadOnlyList<string> CreditedArtists { get; init; } = [];
 
     public static IReadOnlyList<string> SelectArtists(params IEnumerable<string?>?[] candidates)
     {

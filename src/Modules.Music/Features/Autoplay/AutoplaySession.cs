@@ -14,7 +14,7 @@ internal sealed class AutoplaySession
     public int LoadedLimit { get; set; }
     public int DiscoveryAttempt { get; set; }
     public int PendingEnqueues { get; set; }
-    public Queue<Track> Candidates { get; } = new();
+    public Queue<AutoplayCandidate> Candidates { get; } = new();
     public Track? Ready { get; set; }
     public CancellationTokenSource? Work { get; private set; }
     public long Revision { get; private set; }

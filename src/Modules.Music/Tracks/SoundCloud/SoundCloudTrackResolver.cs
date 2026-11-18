@@ -85,6 +85,9 @@ internal sealed class SoundCloudTrackResolver(
             SourceUrl: sourceUrl,
             ThumbnailUrl: thumbnailUrl,
             UploaderName: metadata.Uploader ?? metadata.Channel,
-            UploaderUrl: metadata.UploaderUrl);
+            UploaderUrl: metadata.UploaderUrl)
+        {
+            CreditedArtists = Track.SelectArtists(metadata.Artists, [metadata.Artist]),
+        };
     }
 }

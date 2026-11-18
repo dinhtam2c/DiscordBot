@@ -7,6 +7,12 @@ internal sealed class YoutubeMetadata
     [JsonPropertyName("is_live")]
     public bool? IsLive { get; init; }
 
+    [JsonPropertyName("live_status")]
+    public string? LiveStatus { get; init; }
+
+    [JsonPropertyName("track")]
+    public string? SongTitle { get; init; }
+
     [JsonPropertyName("availability")]
     public string? Availability { get; init; }
 
